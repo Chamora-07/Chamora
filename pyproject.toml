@@ -1,0 +1,16 @@
+[project]
+name = "chamora"
+version = "0.1.0"
+description = "Performance Engine Orchestrator"
+readme = "README.md"
+requires-python = ">=3.11"
+# Only keep global dependencies here, or leave empty if apps handle their own
+dependencies = [
+    "metrics_retriever", 
+]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+metrics_retriever = { workspace = true }
