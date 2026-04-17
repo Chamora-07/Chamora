@@ -6,7 +6,12 @@ load_dotenv()
 
 DB_URL = os.getenv("DATABASE_URL", "").replace("postgresql://", "postgresql+asyncpg://")
 
-engine = create_async_engine(DB_URL , pool_size=5 , max_overflow=10)
+engine = create_async_engine(
+    DB_URL ,
+    connect_args={
+        "prepared_statement_cache_size": 0,
+        "statement_cache_size": 0
+    })
 
 SessionLocal = async_sessionmaker(bind = engine, expire_on_commit=False)
 

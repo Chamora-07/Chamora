@@ -31,7 +31,7 @@ services:
     depends_on:
       - kafka
     ports:
-      - "8080:8080"
+      - "8085:8080"
     networks:
       - anomaly_detection 
     environment:
@@ -47,9 +47,73 @@ services:
     networks:
       - anomaly_detection
     env_file: .env
+    working_dir: /app
     environment:
+      - PYTHONPATH=/app:/app/packages/metrics_retriever
+      - DATABASE_URL=${DATABASE_URL}
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - VM_URL=http://16.16.70.92:8428/api/v1/query
+    volumes:
+      - .:/app
+    restart: always
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile 
+    container_name: chamora_backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+    networks:
+      - anomaly_detection
+    env_file: .env
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    volumes:
+      - .:/app
+
+  feature_builder:
+    build:
+      context: .
+      dockerfile: packages/feature_builder/Dockerfile
+    container_name: feature_builder
+    depends_on:
+      - kafka
+      - metrics_retriever
+    networks:
+      - anomaly_detection
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app:/app/packages/feature_builder
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_RAW_TOPIC=raw_metrics
+      - KAFKA_FEATURE_TOPIC=processed_features
+    volumes:
+      - .:/app
+    restart: always
+
+  rule_engine:
+    build:
+      context: .
+      dockerfile: packages/rule_engine/Dockerfile
+    container_name: rule_engine
+    depends_on:
+      - kafka
+      - feature_builder
+    networks:
+      - anomaly_detection
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app:/app/packages/rule_engine
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC_FEATURES=processed_features
+      - KAFKA_CONSUMER_GROUP=chamora-rule-engine-v1
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - .:/app
+      - /app/.venv
     restart: always
 
 networks:

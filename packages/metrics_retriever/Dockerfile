@@ -6,6 +6,7 @@ WORKDIR /app
 
 # 1. Copy workspace-level configuration
 COPY pyproject.toml uv.lock ./
+COPY db/ ./db/
 
 # 2. Copy the ENTIRE sub-package directory
 # This includes the pyproject.toml AND the metrics_retriever/ code folder
@@ -20,7 +21,7 @@ RUN uv sync --frozen --no-cache --package metrics_retriever
 COPY main.py ./
 
 # 5. Ensure Python can find your workspace modules
-ENV PYTHONPATH="/app/packages/metrics_retriever"
+ENV PYTHONPATH="/app:/app/packages/metrics_retriever"
 
 # 6. Run the orchestrator
-CMD ["uv", "run", "python", "main.py"]
+CMD ["uv", "run", "python", "-m", "metrics_retriever.scraper"]

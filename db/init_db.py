@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 from db.base import Base
-from db.models import User, Application, Endpoint, Document, TestScript, TestRun
+from db.models import User, Application, Endpoint, Document, TestScript, TestRun , AnomalyDetectionConfig
 
 load_dotenv()
 
