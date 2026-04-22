@@ -1,2 +1,14 @@
-__pycache__
+# Bytecode / Compiled junk
+__pycache__/
 *.pyc
+*.pyo
+
+# Virtual Environments
+.venv/
+venv/
+
+# Environment Secrets
+
+# Tooling
+.python-version
+.uv/
