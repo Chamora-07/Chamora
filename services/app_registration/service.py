@@ -26,7 +26,9 @@ async def create_application(
         user_id=user_id,
         name=app_data.name,
         description=app_data.description,
-        github_repo=app_data.github_repo
+        github_repo=app_data.github_repo,
+        grafana_url=app_data.grafana_url,
+        victoria_metrics_url=app_data.victoria_metrics_url
     )
     
     db.add(new_app)

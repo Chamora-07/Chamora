@@ -23,10 +23,11 @@ class ApplicationCreate(BaseModel):
 
 class ApplicationResponse(BaseModel):
     id: int
-    user_id: int
     name: str
     description: Optional[str]
     github_repo: Optional[str]
+    grafana_url: Optional[str]
+    victoria_metrics_url: Optional[str]
     endpoints: List[EndpointResponse] = []
     
     model_config = ConfigDict(from_attributes=True)

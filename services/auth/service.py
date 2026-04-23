@@ -5,7 +5,7 @@ from services.auth.schemas import Token, UserLogin, UserResponse, UserSignUp
 from services.auth.utils import hash_password , verify_password , create_access_token
 
 
-async def register_user(db: AsyncSession , user_data: UserSignUp )-> UserResponse:
+async def register_user(db: AsyncSession , user_data: UserSignUp )-> Token:
 
     query = select(User).where(User.email == user_data.email)
     result = await db.execute(query)
@@ -22,7 +22,8 @@ async def register_user(db: AsyncSession , user_data: UserSignUp )-> UserRespons
     await db.commit()
     await db.refresh(new_user)
 
-    return UserResponse.model_validate(new_user)
+    access_token = create_access_token(data={"sub": str(new_user.id)})
+    return Token(access_token=access_token, token_type="bearer")
 
 async def authenticate_user(db: AsyncSession, login_data: UserLogin) -> Token:
 

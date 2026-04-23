@@ -23,6 +23,8 @@ class Application(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     github_repo: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    grafana_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    victoria_metrics_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     
     owner: Mapped["User"] = relationship(back_populates="applications")
     endpoints: Mapped[List["Endpoint"]] = relationship(back_populates="application", cascade="all, delete")

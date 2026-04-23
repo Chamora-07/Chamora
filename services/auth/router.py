@@ -5,9 +5,15 @@ from . import service, schemas
 
 router = APIRouter()
 
-@router.post("/signup", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/signup", response_model=schemas.Token, status_code=status.HTTP_201_CREATED)
 async def signup(user_data: schemas.UserSignUp, db: AsyncSession = Depends(get_db)):
-    return await service.register_user(db, user_data)
+    try:
+        return await service.register_user(db, user_data)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
 
 @router.post("/login", response_model=schemas.Token)
 async def login(credentials: schemas.UserLogin, db: AsyncSession = Depends(get_db)):
