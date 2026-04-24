@@ -12,3 +12,5 @@ venv/
 # Tooling
 .python-version
 .uv/
+
+files

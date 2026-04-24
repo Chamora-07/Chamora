@@ -9,5 +9,5 @@ v1_router = APIRouter()
 
 v1_router.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 v1_router.include_router(app_registration_router, prefix="/application", tags=["Application"])
-v1_router.include_router(prefix="/test-scripts", tags=["Test Scripts"])
+v1_router.include_router(test_script_registration_router, prefix="/test-scripts", tags=["Test Scripts"])
 
