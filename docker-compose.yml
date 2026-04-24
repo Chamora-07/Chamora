@@ -125,6 +125,7 @@ services:
       - "8010:8000"
     env_file:
       - ./packages/recommendation-module/backend/.env
+      - ./.env
     networks:
       - anomaly_detection
     restart: unless-stopped
