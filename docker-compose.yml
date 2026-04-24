@@ -116,6 +116,20 @@ services:
       - /app/.venv
     restart: always
 
+  recommendation-module:
+    build:
+      context: .
+      dockerfile: packages/recommendation-module/backend/Dockerfile
+    container_name: recommendation-module
+    ports:
+      - "8010:8000"
+    env_file:
+      - ./packages/recommendation-module/backend/.env
+    networks:
+      - anomaly_detection
+    restart: unless-stopped
+
+
 networks:
   anomaly_detection:
     driver: bridge

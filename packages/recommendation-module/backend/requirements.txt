@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+requests
+httpx
+docker
+python-dotenv
+pydantic
+groq
+chromadb
+#sentence-transformers
+pypdf
+supabase
+#sentence-transformers
+#vecs
