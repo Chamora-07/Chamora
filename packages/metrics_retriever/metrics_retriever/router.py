@@ -2,35 +2,88 @@ from fastapi import APIRouter
 import asyncio
 import logging
 from .scraper import MetricsScraper
+from .db_manager import RetrieverDBManager
 from .kafka_utils import kafka_mgr
+from .config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/retriever", tags=["Metrics Retriever"])
 
-# This manages the lifecycle of this specific component
 class RetrieverManager:
     def __init__(self):
         self.scraper = MetricsScraper()
-        self.task = None
+        self.db_manager = None
+        self.active_jobs = []
+        self._observer_task = None
+        self._heartbeat_task = None
+        self.is_running = False
 
     async def start(self):
-        logger.info("Starting Metrics Retriever background task...")
-        self.task = asyncio.create_task(self.scraper.run_loop())
+        logger.info("Starting Metrics Retriever Engine...")
+        self.db_manager = RetrieverDBManager(settings.database_url)
+        self.is_running = True
+        self._observer_task = asyncio.create_task(self._observer_loop())
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    async def _observer_loop(self):
+        """Background task to keep our job list in sync with the DB every 60s."""
+        while self.is_running:
+            try:
+                jobs = await self.db_manager.get_active_monitoring_jobs()
+                self.active_jobs = jobs
+                logger.info(f"Retriever synced: Monitoring {len(self.active_jobs)} endpoints.")
+            except Exception as e:
+                logger.error(f"Observer loop error: {e}")
+            await asyncio.sleep(60)
+
+    async def _heartbeat_loop(self):
+        """The actual scraping heartbeat — runs every 1 second."""
+        while self.is_running:
+            start_time = asyncio.get_event_loop().time()
+            try:
+                if self.active_jobs:
+                    await self.scraper.run_scrape_batch(self.active_jobs)
+            except Exception as e:
+                logger.error(f"Scrape cycle error: {e}")
+            elapsed = asyncio.get_event_loop().time() - start_time
+            await asyncio.sleep(max(0, 1.0 - elapsed))
+
+    async def refresh_jobs(self):
+        """
+        Called externally (e.g. from anomaly config API) when a user
+        creates, updates, or deletes a config — so scraping starts instantly
+        without waiting for the 60s observer cycle.
+        """
+        try:
+            jobs = await self.db_manager.get_active_monitoring_jobs()
+            self.active_jobs = jobs
+            logger.info(f"Job list refreshed on-demand: {len(self.active_jobs)} endpoints.")
+        except Exception as e:
+            logger.error(f"On-demand refresh failed: {e}")
 
     async def stop(self):
-        logger.info("Stopping Metrics Retriever...")
-        self.scraper.stop()
-        if self.task:
-            await self.task
+        logger.info("Stopping Metrics Retriever background tasks...")
+        self.is_running = False
+        if self._observer_task:
+            self._observer_task.cancel()
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+        if self.db_manager:
+            await self.db_manager.close()
         kafka_mgr.flush()
+        logger.info("Retriever shutdown complete.")
 
-# Create a singleton manager
+# Singleton manager
 manager = RetrieverManager()
 
 @router.get("/status")
 async def get_status():
     return {
         "component": "metrics-retriever",
-        "active": manager.scraper.is_running,
-        "target": manager.scraper.c_name
+        "is_active": manager.is_running,
+        "monitoring_count": len(manager.active_jobs),
+        "active_endpoints": [
+            {"app_id": j['application_id'], "container": j['container_name']}
+            for j in manager.active_jobs
+        ]
     }
