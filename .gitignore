@@ -1,16 +1,11 @@
-# Bytecode / Compiled junk
 __pycache__/
 *.pyc
 *.pyo
-
-# Virtual Environments
-.venv/
+*.pyd
+.Python
+.env
 venv/
-
-# Environment Secrets
-
-# Tooling
-.python-version
-.uv/
-
-files
+env/
+dist/
+build/
+*.egg-info/
