@@ -46,6 +46,9 @@ services:
       - kafka
     networks:
       - anomaly_detection
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4    
     env_file: .env
     working_dir: /app
     environment:
@@ -68,11 +71,15 @@ services:
       - kafka
     networks:
       - anomaly_detection
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4  
     env_file: .env
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
     volumes:
       - .:/app
+      - /app/.venv
 
   feature_builder:
     build:
@@ -104,6 +111,9 @@ services:
       - feature_builder
     networks:
       - anomaly_detection
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4  
     env_file: .env
     environment:
       - PYTHONPATH=/app:/app/packages/rule_engine
@@ -126,6 +136,9 @@ services:
     env_file:
       - ./packages/recommendation-module/backend/.env
       - ./.env
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4  
     networks:
       - anomaly_detection
     restart: unless-stopped
