@@ -9,18 +9,19 @@ COPY pyproject.toml uv.lock ./
 COPY db/ ./db/
 
 # 2. Copy the ENTIRE sub-package directory
+# This includes the pyproject.toml AND the metrics_retriever/ code folder
+# Hatchling needs to see the folder to validate the package during sync
 COPY packages/metrics_retriever/ ./packages/metrics_retriever/
 
 # 3. Install dependencies
+# uv will now find the code folder and Hatchling will be happy
 RUN uv sync --frozen --no-cache --package metrics_retriever
 
-# 4. Copy the root orchestrator and services
+# 4. Copy the root orchestrator
 COPY main.py ./
-COPY services/ ./services/
-COPY api/ ./api/
 
 # 5. Ensure Python can find your workspace modules
 ENV PYTHONPATH="/app:/app/packages/metrics_retriever"
 
-# 6. Run via FastAPI — uses router.py + RetrieverManager (60s observer, not __main__)
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+# 6. Run the orchestrator
+CMD ["uv", "run", "python", "-m", "metrics_retriever.scraper"]
