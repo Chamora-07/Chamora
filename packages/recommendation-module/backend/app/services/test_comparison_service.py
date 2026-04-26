@@ -1,61 +1,44 @@
-import re
+from app.core.supabase_client import get_supabase_client
 
 
-def extract_cycle_numbers(question):
-    matches = re.findall(r"\b\d+\b", question)
-    numbers = [int(x) for x in matches]
-    if len(numbers) >= 2:
-        return numbers[0], numbers[1]
-    return None, None
+def handle_test_comparison(question: str, app_id: str):
+    supabase = get_supabase_client()
 
+    # For now: get latest 2 test runs
+    result = (
+        supabase.table("test_runs")
+        .select("*")
+        .eq("app_id", app_id)
+        .order("created_at", desc=True)
+        .limit(2)
+        .execute()
+    )
 
-def extract_requested_metrics(question):
-    q = question.lower()
+    data = result.data
 
-    metric_keywords = {
-        "response time": "response_time",
-        "throughput": "throughput",
-        "error rate": "error_rate",
-        "cpu": "cpu",
-        "memory": "memory",
-        "latency": "latency",
-    }
+    if len(data) < 2:
+        return {
+            "answer": "Not enough test runs to compare.",
+            "mode": "advisory"
+        }
 
-    found = [value for key, value in metric_keywords.items() if key in q]
-    return found
+    run1, run2 = data[0], data[1]
 
+    summary = f"""
+Test Comparison Summary:
 
-def get_test_cycle_comparison(app_id, cycle_a, cycle_b, metrics):
+Run 1:
+- ID: {run1['id']}
+- Status: {run1.get('status')}
+- Duration: {run1.get('duration')}
+
+Run 2:
+- ID: {run2['id']}
+- Status: {run2.get('status')}
+- Duration: {run2.get('duration')}
+"""
+
     return {
-        "application_id": app_id,
-        "baseline_cycle": cycle_a,
-        "target_cycle": cycle_b,
-        "metrics": {
-            "response_time": {
-                "baseline": 320,
-                "target": 470,
-                "difference": 150,
-                "difference_percent": 46.9
-            },
-            "throughput": {
-                "baseline": 180,
-                "target": 150,
-                "difference": -30,
-                "difference_percent": -16.7
-            },
-            "cpu": {
-                "baseline": 68,
-                "target": 79,
-                "difference": 11,
-                "difference_percent": 16.2
-            },
-            "memory": {
-                "baseline": 63,
-                "target": 71,
-                "difference": 8,
-                "difference_percent": 12.7
-            }
-        },
-        "summary": f"Comparison prepared for cycle {cycle_a} and cycle {cycle_b}.",
-        "regression_detected": True
+        "answer": summary,
+        "mode": "advisory"
     }

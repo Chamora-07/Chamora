@@ -330,29 +330,51 @@ def handle_anomaly_question(app_id, question, session_id, user_id):
 
 def handle_test_comparison_question(app_id, question, session_id, user_id):
     context = build_chatbot_context(app_id)
+
+    # Step 1: extract cycles + metrics
     cycle_a, cycle_b = extract_cycle_numbers(question)
     metrics = extract_requested_metrics(question)
 
+    # Step 2: ask clarification if missing
     if cycle_a is None or cycle_b is None or not metrics:
         answer = (
             "Please specify which test cycles you want to compare and which metrics "
-            "you want to focus on, such as response time, throughput, error rate, CPU, or memory.\n\n"
+            "you want to focus on.\n\n"
             "Example: Compare cycle 2 and cycle 5 for response time and throughput."
         )
         store_chat_message(session_id, app_id, user_id, "assistant", answer, "clarification")
+
         return {
             "answer": answer,
             "mode": "advisory",
         }
 
-    comparison_data = get_test_cycle_comparison(app_id, cycle_a, cycle_b, metrics)
+    # Step 3: fetch comparison data
+    comparison_data = get_test_cycle_comparison(app_id, cycle_a, cycle_b)
 
+    if comparison_data is None:
+        answer = f"No comparison data found for cycle {cycle_a} and cycle {cycle_b}."
+        store_chat_message(session_id, app_id, user_id, "assistant", answer, "test_comparison")
+
+        return {
+            "answer": answer,
+            "mode": "advisory",
+        }
+
+    # Step 4: build LLM prompt
     system_prompt = build_test_comparison_system_prompt()
-    user_prompt = build_test_comparison_user_prompt(context, comparison_data, metrics, question)
+    user_prompt = build_test_comparison_user_prompt(
+        context,
+        comparison_data,
+        metrics,
+        question
+    )
 
+    # Step 5: generate response
     try:
         answer = generate_llm_response(system_prompt, user_prompt)
     except Exception:
+        # fallback (important for stability)
         selected_metrics = []
         for metric in metrics:
             if metric in comparison_data["metrics"]:
@@ -370,7 +392,9 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
             f"Regression detected: {'Yes' if comparison_data['regression_detected'] else 'No'}."
         )
 
+    # Step 6: store history
     store_chat_message(session_id, app_id, user_id, "assistant", answer, "test_comparison")
+
     store_recommendation_history(
         app_id,
         user_id,
@@ -385,7 +409,6 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
         "answer": answer,
         "mode": "advisory",
     }
-
 
 def handle_chatbot_question(app_id, question, user_id=None):
     question_type = detect_question_type(question)
