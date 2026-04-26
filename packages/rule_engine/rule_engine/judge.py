@@ -185,7 +185,7 @@ class SlidingWindowJudge:
             logger.info(f"🔍 DEBUG | App 1 | Score: {score:.2f} | Latency: {mu.get('latency_p95', 0):.4f} | CPU: {mu.get('cpu_usage_rate', 0):.4f}")
 
         # Filter out anything below the testing threshold
-        if score < 0.3: 
+        if score < 0.6: 
             return None 
 
         logger.warning(f"⚖️ Verdict Generated | App: {app_id} | Score: {score:.2f} | Severity: {'CRITICAL' if score >= 0.7 else 'WARNING'}")
