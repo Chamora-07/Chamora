@@ -43,9 +43,10 @@ async def verify_application_ownership(
 async def upload_to_bucket(file: UploadFile, app_id: int) -> str:
     """
     Uploads document to Supabase storage.
-    Path format: application/{app_id}/documents/{filename}
+    Path format: applications/{app_id}/{filename}
     """
-    bucket_path = f"application/{app_id}/documents/{file.filename}"
+    # Store files under a top-level `applications` folder, partitioned by application id
+    bucket_path = f"applications/{app_id}/{file.filename}"
     file_bytes = await file.read()
 
     try:
