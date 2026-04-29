@@ -1,8 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from fastapi import HTTPException
 
-from db.models import AnomalyDetectionConfig, Endpoint, Application
+from db.models import AnomalyDetectionConfig, Endpoint, Application, Anomaly
 from .schemas import AnomalyConfigCreate, AnomalyConfigUpdate
 
 
@@ -118,3 +118,61 @@ async def delete_config(
     config = await get_config_by_endpoint(db, endpoint_id, user_id)
     await db.delete(config)
     await db.commit()
+
+
+async def get_application_config_summaries(
+    db: AsyncSession,
+    application_id: int,
+    user_id: int
+) -> list[dict]:
+    app_stmt = (
+        select(Application.id)
+        .where(Application.id == application_id)
+        .where(Application.user_id == user_id)
+    )
+    app_result = await db.execute(app_stmt)
+    if app_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Application not found.")
+
+    summary_stmt = (
+        select(
+            AnomalyDetectionConfig.id.label("config_id"),
+            AnomalyDetectionConfig.endpoint_id,
+            Endpoint.target_name.label("endpoint_name"),
+            Endpoint.container_name,
+            AnomalyDetectionConfig.latency_threshold,
+            AnomalyDetectionConfig.error_rate_threshold,
+            AnomalyDetectionConfig.failure_streak_limit,
+            AnomalyDetectionConfig.cpu_usage_threshold,
+            AnomalyDetectionConfig.memory_pressure_threshold,
+            AnomalyDetectionConfig.disk_io_threshold,
+            AnomalyDetectionConfig.cpu_node_ratio_threshold,
+            AnomalyDetectionConfig.is_active,
+            AnomalyDetectionConfig.created_at,
+            func.count(Anomaly.id).label("anomaly_count"),
+        )
+        .join(Endpoint, AnomalyDetectionConfig.endpoint_id == Endpoint.id)
+        .join(Application, Endpoint.application_id == Application.id)
+        .outerjoin(Anomaly, Anomaly.config_id == AnomalyDetectionConfig.id)
+        .where(Application.id == application_id)
+        .where(Application.user_id == user_id)
+        .group_by(
+            AnomalyDetectionConfig.id,
+            AnomalyDetectionConfig.endpoint_id,
+            Endpoint.target_name,
+            Endpoint.container_name,
+            AnomalyDetectionConfig.latency_threshold,
+            AnomalyDetectionConfig.error_rate_threshold,
+            AnomalyDetectionConfig.failure_streak_limit,
+            AnomalyDetectionConfig.cpu_usage_threshold,
+            AnomalyDetectionConfig.memory_pressure_threshold,
+            AnomalyDetectionConfig.disk_io_threshold,
+            AnomalyDetectionConfig.cpu_node_ratio_threshold,
+            AnomalyDetectionConfig.is_active,
+            AnomalyDetectionConfig.created_at,
+        )
+        .order_by(AnomalyDetectionConfig.created_at.desc())
+    )
+
+    result = await db.execute(summary_stmt)
+    return [dict(row._mapping) for row in result]

@@ -38,4 +38,21 @@ class AnomalyConfigResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AnomalyConfigSummaryResponse(BaseModel):
+    config_id: int
+    endpoint_id: int
+    endpoint_name: str
+    container_name: str
+    latency_threshold: float
+    error_rate_threshold: float
+    failure_streak_limit: int
+    cpu_usage_threshold: float
+    memory_pressure_threshold: float
+    disk_io_threshold: float
+    cpu_node_ratio_threshold: float
+    is_active: bool
+    created_at: datetime
+    anomaly_count: int
         
