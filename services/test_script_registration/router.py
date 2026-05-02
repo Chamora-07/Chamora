@@ -12,7 +12,7 @@ async def create_test_script(
     application_id: int = Form(...),
     script_name: str = Form(...),
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),  # ← AsyncSession
+    db: AsyncSession = Depends(get_db),  
     current_user: User = Depends(get_current_user)
 ):
     return await service.register_script(
