@@ -56,6 +56,11 @@ async def start_engine():
                 if not cfg.is_active:
                     continue
 
+                ml_active = await db.is_ml_inference_enabled(config_id)
+                if ml_active:
+                    # logger.info(f"ML Inference detected as ENABLED for Config {config_id}. Rule-based suppression active for 24h.")
+                    continue
+
                 # ✅ Window buffer keyed by config_id — isolates each endpoint
                 verdict = judge.evaluate(config_id, data, cfg)
 

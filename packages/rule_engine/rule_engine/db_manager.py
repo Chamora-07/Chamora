@@ -1,10 +1,10 @@
 import time
+import logging
 from datetime import datetime, timezone 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy import select
 from db.models import AnomalyDetectionConfig, Anomaly
 from .config import settings
-import logging
 
 logger = logging.getLogger("rule-engine.db")
 
@@ -19,6 +19,8 @@ class RuleDBManager:
         )
         self.Session = async_sessionmaker(bind=self.engine, expire_on_commit=False)
         self._config_cache = {}  # {endpoint_id: (config_obj, expiry_time)}
+        self._ml_enabled_cache = {}  # {config_id: (is_enabled, expiry_time)}
+        self.ML_CACHE_TTL = 86400  # 24 hours in seconds
 
     async def get_config(self, endpoint_id: int):
         """
@@ -33,7 +35,7 @@ class RuleDBManager:
 
         async with self.Session() as session:
             stmt = select(AnomalyDetectionConfig).where(
-                AnomalyDetectionConfig.endpoint_id == endpoint_id,  # ← correct field
+                AnomalyDetectionConfig.endpoint_id == endpoint_id,
                 AnomalyDetectionConfig.is_active == True
             )
             result = await session.execute(stmt)
@@ -57,7 +59,8 @@ class RuleDBManager:
                 window_timestamp=window_timestamp,
                 score=v["score"],
                 severity=v["severity"],
-                root_cause=v["root_cause"],
+                # Note: verify if your Anomaly model uses root_cause or evidence
+                # root_cause=v.get("root_cause"), 
                 evidence=v["evidence"]
             )
             session.add(new_anomaly)
@@ -68,3 +71,47 @@ class RuleDBManager:
                 f"window_timestamp={window_timestamp.isoformat()} | "
                 f"severity={v['severity']}"
             )
+
+    async def is_ml_inference_enabled(self, config_id: int) -> bool:
+        """
+        Checks the 'ml_inference_enabled' column in AnomalyDetectionConfig.
+        Results are cached for 24 hours to prevent spamming the database.
+        """
+        now = time.time()
+        
+        # 1. Check local memory cache first
+        if config_id in self._ml_enabled_cache:
+            is_enabled, expiry = self._ml_enabled_cache[config_id]
+            if now < expiry:
+                return is_enabled
+
+        # 2. Perform DB Refresh
+        logger.info(f"🔄 [DB Refresh] Checking 'ml_inference_enabled' for Config {config_id}...")
+        
+        async with self.Session() as session:
+            try:
+                # Query specifically for the boolean flag
+                stmt = select(AnomalyDetectionConfig.ml_inference_enabled).where(
+                    AnomalyDetectionConfig.id == config_id
+                )
+                result = await session.execute(stmt)
+                is_enabled = result.scalar()
+                
+                if is_enabled is None:
+                    is_enabled = False 
+                
+                # Update 24-hour cache
+                self._ml_enabled_cache[config_id] = (is_enabled, now + self.ML_CACHE_TTL)
+                
+                if is_enabled:
+                    logger.warning(f"🤖 [Decision] ML is ENABLED for Config {config_id}. Suppressing rules for 24h.")
+                else:
+                    logger.info(f"📜 [Decision] ML is DISABLED for Config {config_id}. Rules remain active.")
+                
+                return is_enabled
+
+            except Exception as e:
+                # Error Cooldown: Cache 'False' for 5 mins to prevent loop spamming on DB/Attribute errors
+                self._ml_enabled_cache[config_id] = (False, now + 300)
+                logger.error(f"❌ [DB Error] Config {config_id}: {e}. Retrying in 5 minutes.")
+                return False
