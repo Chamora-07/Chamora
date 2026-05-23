@@ -78,13 +78,18 @@ manager = RetrieverManager()
 
 @router.get("/status")
 async def get_status():
-    """Returns the live status of the monitoring engine."""
     return {
         "component": "metrics-retriever",
         "is_active": manager.is_running,
         "monitoring_count": len(manager.active_jobs),
         "active_endpoints": [
-            {"app_id": j['application_id'], "container": j['container_name']}
+            {
+                "app_id": j['application_id'],
+                "config_id": j['config_id'],      # ← add this
+                "endpoint_id": j['endpoint_id'],  # ← add this
+                "container": j['container_name'],
+                "probe": j['probe_name']           # ← add this
+            }
             for j in manager.active_jobs
         ]
     }
