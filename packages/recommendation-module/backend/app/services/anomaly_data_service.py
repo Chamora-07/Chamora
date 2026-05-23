@@ -1,3 +1,4 @@
+from app.core.supabase_client import get_supabase_client
 def get_current_anomaly_state(app_id):
     return {
         "application_id": app_id,

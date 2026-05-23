@@ -6,7 +6,7 @@ export function ApplicationDashboard() {
   const navigate = useNavigate();
 
   // Mock data - in real app, fetch based on appId
-  const appName = appId === 'hms-001' ? 'Hospital Management System' : 'Application Dashboard';
+  const appName = appId === '1' ? 'Hospital Management System' : 'Application Dashboard';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-slate-100">

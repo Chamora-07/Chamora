@@ -37,6 +37,27 @@ def store_chat_message(
     result = supabase.table("chat_messages").insert(payload).execute()
     return result.data[0]
 
+def get_chat_sessions(app_id):
+    response = (
+        supabase.table("chat_sessions")
+        .select("*")
+        .eq("application_id", app_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    return response.data or []
+
+def get_chat_messages(session_id):
+    response = (
+        supabase.table("chat_messages")
+        .select("*")
+        .eq("session_id", session_id)
+        .order("created_at")
+        .execute()
+    )
+
+    return response.data or []
 
 def store_recommendation_history(
     application_id: str,
@@ -61,3 +82,25 @@ def store_recommendation_history(
 
     result = supabase.table("recommendation_history").insert(payload).execute()
     return result.data[0]
+
+def get_chat_sessions(app_id):
+    response = (
+        supabase.table("chat_sessions")
+        .select("*")
+        .eq("application_id", app_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    return response.data or []
+
+def get_chat_messages(session_id):
+    response = (
+        supabase.table("chat_messages")
+        .select("*")
+        .eq("session_id", session_id)
+        .order("created_at")
+        .execute()
+    )
+
+    return response.data or []

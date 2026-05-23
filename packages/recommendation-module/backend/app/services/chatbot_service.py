@@ -12,71 +12,31 @@ from app.services.chat_history_service import (
     store_chat_message,
     store_recommendation_history,
 )
+from app.services.rag_logging_service import log_retrieval
+from app.services.time_parser import parse_time_window
+from app.services.anomaly_service import get_anomalies_between
 
+def classify_question_llm(question):
+    prompt = f"""
+        Classify this question into one category:
 
-def detect_question_type(question):
-    q = question.lower().strip()
+        Categories:
+        - application (questions about the app, metrics, anomalies, tests, performance)
+        - anomaly (incident, spike, failure, root cause, downtime)
+        - test_comparison (comparing test runs or cycles)
+        - general_knowledge (definitions, explanations, facts not related to the application)
 
-    anomaly_keywords = [
-        "anomaly",
-        "diagnostic",
-        "issue",
-        "problem",
-        "abnormal",
-        "root cause",
-        "what happened yesterday",
-        "why there is an anomaly",
-        "why is there an anomaly",
-        "why did anomaly happen",
-    ]
+        Question: {question}
 
-    test_keywords = [
-        "compare test",
-        "test comparison",
-        "compare cycle",
-        "test cycle",
-        "compare results",
-        "compare runs",
-        "compare tests",
-    ]
+        Return ONLY one word from the categories above.
+        """
 
-    application_keywords = [
-        "my application",
-        "my app",
-        "tech stack",
-        "application details",
-        "application metadata",
-        "my environment",
-        "my documents",
-        "uploaded documents",
-        "explain my application",
-        "explain about my application",
-    ]
+    response = generate_llm_response(
+        "You are a strict classification engine. Output only one label.",
+        prompt
+    )
 
-    common_keywords = [
-        "what is machine learning",
-        "tell me a joke",
-        "capital of",
-        "who is",
-        "history of",
-        "weather",
-        "translate",
-    ]
-
-    if any(keyword in q for keyword in anomaly_keywords):
-        return "anomaly"
-
-    if any(keyword in q for keyword in test_keywords):
-        return "test_comparison"
-
-    if any(keyword in q for keyword in application_keywords):
-        return "application"
-
-    if any(keyword in q for keyword in common_keywords):
-        return "common_blocked"
-
-    return "application"
-
+    return response.strip().lower()
 
 def build_chatbot_context(app_id):
     return get_application_context(app_id)
@@ -85,11 +45,11 @@ def build_chatbot_context(app_id):
 def build_application_system_prompt():
     return (
         "You are Chamora, an AI assistant that provides customized recommendations "
-        "for the user's selected application. "
-        "Answer only in the context of the provided application data. "
-        "Be practical, clear, and specific. "
+        "for the user's selected application. Answer only using the provided application "
+        "context and retrieved knowledge when relevant. Be practical, clear, and specific. "
         "Use clean markdown with short bullet points when useful."
     )
+
 
 def build_application_user_prompt(context, question, retrieved_knowledge):
     containers = context["containers"]
@@ -135,20 +95,23 @@ User Question
 {question}
 
 Instructions
-- Answer specifically for this application.
-- Use the retrieved knowledge when relevant.
-- Do not answer like a general chatbot.
-- If data is unknown, say it clearly.
-- Use neat markdown.
-- Keep the answer concise and focused.
+- Use ONLY the provided application context and retrieved knowledge
+- If the answer is not found in retrieved knowledge, say:
+  "No relevant information found in uploaded documents"
+- Do NOT hallucinate
+- Keep answer short and structured
+- Format the answer using clean markdown.
+- Use bullet points for lists.
+- Do not put all bullet points in one paragraph.
+- Use short sections when helpful.
 """.strip()
 
 
 def build_anomaly_system_prompt():
     return (
-        "You are Chamora in diagnostic mode. "
-        "Explain anomalies using the provided application context and anomaly records. "
-        "Focus on what happened, likely cause, impact, and actionable next steps. "
+        "You are Chamora in diagnostic mode. Explain anomalies using only the provided "
+        "application context and anomaly records. Focus on whether anomalies were found "
+        "in the requested time window, what happened, likely cause, impact, and actionable next steps. "
         "Use neat markdown."
     )
 
@@ -156,27 +119,25 @@ def build_anomaly_system_prompt():
 def build_anomaly_user_prompt(context: dict, anomaly_records: list[dict], question: str) -> str:
     trimmed_records = anomaly_records[:3]
 
-    if not trimmed_records:
-        anomaly_text = "No anomaly records were found for the requested time window."
-    else:
-        parts = []
-        for idx, record in enumerate(trimmed_records, start=1):
-            evidence = record.get("evidence", {})
-            if isinstance(evidence, dict):
-                evidence_items = list(evidence.items())[:5]
-                evidence_text = ", ".join([f"{k}={v}" for k, v in evidence_items])
-            else:
-                evidence_text = str(evidence)[:300]
+    parts = []
+    for idx, record in enumerate(trimmed_records, start=1):
+        evidence = record.get("evidence", {})
+        if isinstance(evidence, dict):
+            evidence_items = list(evidence.items())[:5]
+            evidence_text = ", ".join([f"{k}={v}" for k, v in evidence_items])
+        else:
+            evidence_text = str(evidence)[:300]
 
-            parts.append(
-                f"""Record {idx}
-- Time: {record.get("window_timestamp")}
+        parts.append(
+            f"""Record {idx}
+- Time UTC: {record.get("window_timestamp")}
 - Severity: {record.get("severity")}
 - Score: {record.get("score")}
 - Root Cause: {record.get("root_cause")}
 - Evidence: {evidence_text}"""
-            )
-        anomaly_text = "\n\n".join(parts)
+        )
+
+    anomaly_text = "\n\n".join(parts)
 
     return f"""
 Application Context
@@ -193,10 +154,10 @@ User Question
 {question}
 
 Instructions
-- Explain what happened clearly.
-- Mention the requested time window if relevant.
+- If the question asks about a specific time, answer only based on anomaly records in that requested time window.
+- Do not use latest anomaly state as evidence for a different requested time.
 - Interpret severity, score, root cause, and evidence.
-- Give actionable recommendations.
+- Give actionable recommendations only if anomaly records exist.
 - Stay specific to this application.
 - Keep the answer concise and focused.
 """.strip()
@@ -261,6 +222,14 @@ def handle_application_question(app_id, question, session_id, user_id):
 
     retrieved_chunks = retrieve_relevant_chunks(app_id, question, top_k=2)
     retrieved_knowledge = format_retrieved_knowledge(retrieved_chunks)
+    log_retrieval(app_id, question, retrieved_chunks)
+
+    sources = []
+    for chunk in retrieved_chunks:
+        metadata = chunk.get("metadata", {})
+        file_name = metadata.get("file_name", "unknown")
+        if file_name not in sources:
+            sources.append(file_name)
 
     system_prompt = build_application_system_prompt()
     user_prompt = build_application_user_prompt(context, question, retrieved_knowledge)
@@ -270,11 +239,9 @@ def handle_application_question(app_id, question, session_id, user_id):
     except Exception:
         answer = (
             f"{context['app_name']} is a {context['domain']} application running in the "
-            f"{context['environment']} environment. It currently appears to use "
-            f"{context['tech_stack']['frontend']} on the frontend and "
-            f"{context['tech_stack']['backend']} on the backend. "
-            f"The current CPU usage is {context['metrics']['cpu_percent']}% and memory usage is "
-            f"{context['metrics']['memory_percent']}%."
+            f"{context['environment']} environment. Current CPU usage is "
+            f"{context['metrics']['cpu_percent']}% and memory usage is "
+            f"{context['metrics']['memory_percent']}%. Retrieved document knowledge was unavailable or insufficient."
         )
 
     store_chat_message(session_id, app_id, user_id, "assistant", answer, "application")
@@ -284,32 +251,65 @@ def handle_application_question(app_id, question, session_id, user_id):
         session_id,
         question,
         answer,
-        context["mode"],
+        "advisory",
         [],
     )
 
     return {
         "answer": answer,
-        "mode": context["mode"],
+        "mode": "advisory",
+        "sources": sources
     }
 
 
 def handle_anomaly_question(app_id, question, session_id, user_id):
     context = build_chatbot_context(app_id)
     latest_state = get_latest_anomaly_for_app(app_id)
-    anomaly_records = get_anomalies_by_time_window(app_id, question)
+
+    time_window = parse_time_window(question)
+
+    if time_window:
+        start_time, end_time = time_window
+
+        anomaly_records = get_anomalies_between(
+            app_id,
+            start_time,
+            end_time
+        )
+    else:
+        anomaly_records = get_anomalies_by_time_window(
+            app_id,
+            question
+        )
 
     if not anomaly_records:
         answer = "No anomaly records were found for the requested time window."
         store_chat_message(session_id, app_id, user_id, "assistant", answer, "anomaly")
+        store_recommendation_history(
+            app_id,
+            user_id,
+            session_id,
+            question,
+            answer,
+            "diagnostic",
+            [],
+        )
         return {
             "answer": answer,
-            "mode": latest_state.get("mode", "advisory"),
+            "mode": "diagnostic",
         }
 
     system_prompt = build_anomaly_system_prompt()
     user_prompt = build_anomaly_user_prompt(context, anomaly_records, question)
-    answer = generate_llm_response(system_prompt, user_prompt)
+
+    try:
+        answer = generate_llm_response(system_prompt, user_prompt)
+    except Exception:
+        answer = (
+            f"Found {len(anomaly_records)} anomaly record(s) for the requested time window. "
+            f"Latest severity: {anomaly_records[-1].get('severity')}. "
+            f"Root cause: {anomaly_records[-1].get('root_cause')}."
+        )
 
     store_chat_message(session_id, app_id, user_id, "assistant", answer, "anomaly")
     store_recommendation_history(
@@ -331,16 +331,14 @@ def handle_anomaly_question(app_id, question, session_id, user_id):
 def handle_test_comparison_question(app_id, question, session_id, user_id):
     context = build_chatbot_context(app_id)
 
-    # Step 1: extract cycles + metrics
     cycle_a, cycle_b = extract_cycle_numbers(question)
     metrics = extract_requested_metrics(question)
 
-    # Step 2: ask clarification if missing
     if cycle_a is None or cycle_b is None or not metrics:
         answer = (
-            "Please specify which test cycles you want to compare and which metrics "
+            "Please specify which test runs or cycles you want to compare and which metrics "
             "you want to focus on.\n\n"
-            "Example: Compare cycle 2 and cycle 5 for response time and throughput."
+            "Example: Compare test run 1 and 2 for response time and throughput."
         )
         store_chat_message(session_id, app_id, user_id, "assistant", answer, "clarification")
 
@@ -349,11 +347,10 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
             "mode": "advisory",
         }
 
-    # Step 3: fetch comparison data
     comparison_data = get_test_cycle_comparison(app_id, cycle_a, cycle_b)
 
     if comparison_data is None:
-        answer = f"No comparison data found for cycle {cycle_a} and cycle {cycle_b}."
+        answer = f"No comparison data found for test run/cycle {cycle_a} and {cycle_b}."
         store_chat_message(session_id, app_id, user_id, "assistant", answer, "test_comparison")
 
         return {
@@ -361,7 +358,6 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
             "mode": "advisory",
         }
 
-    # Step 4: build LLM prompt
     system_prompt = build_test_comparison_system_prompt()
     user_prompt = build_test_comparison_user_prompt(
         context,
@@ -370,11 +366,9 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
         question
     )
 
-    # Step 5: generate response
     try:
         answer = generate_llm_response(system_prompt, user_prompt)
     except Exception:
-        # fallback (important for stability)
         selected_metrics = []
         for metric in metrics:
             if metric in comparison_data["metrics"]:
@@ -392,9 +386,7 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
             f"Regression detected: {'Yes' if comparison_data['regression_detected'] else 'No'}."
         )
 
-    # Step 6: store history
     store_chat_message(session_id, app_id, user_id, "assistant", answer, "test_comparison")
-
     store_recommendation_history(
         app_id,
         user_id,
@@ -410,8 +402,18 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
         "mode": "advisory",
     }
 
+def normalize_question_type(qtype):
+    qtype = qtype.lower().strip()
+
+    allowed = ["application", "anomaly", "test_comparison", "general_knowledge"]
+
+    if qtype not in allowed:
+        return "application"   # safe fallback
+
+    return qtype
+
 def handle_chatbot_question(app_id, question, user_id=None):
-    question_type = detect_question_type(question)
+    question_type = normalize_question_type(classify_question_llm(question))
     context = build_chatbot_context(app_id)
 
     session = create_chat_session(app_id, user_id, context["mode"])
@@ -419,16 +421,16 @@ def handle_chatbot_question(app_id, question, user_id=None):
 
     store_chat_message(session_id, app_id, user_id, "user", question, question_type)
 
-    if question_type == "common_blocked":
-        answer = blocked_common_response()
+    if question_type == "general_knowledge":
+        return blocked_common_response()
         store_chat_message(session_id, app_id, user_id, "assistant", answer["answer"], "common_blocked")
         return answer
 
-    if question_type == "anomaly":
-        return handle_anomaly_question(app_id, question, session_id, user_id)
-
     if question_type == "test_comparison":
         return handle_test_comparison_question(app_id, question, session_id, user_id)
+
+    if question_type == "anomaly":
+        return handle_anomaly_question(app_id, question, session_id, user_id)
 
     return handle_application_question(app_id, question, session_id, user_id)
 

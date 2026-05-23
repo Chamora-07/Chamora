@@ -17,7 +17,7 @@ export function UserDashboard() {
   const [user, setUser] = useState<{ name: string; email: string } | null>(null);
   const [applications, setApplications] = useState<Application[]>([
     {
-      id: 'hms-001',
+      id: '1',
       name: 'Hospital Management System',
       description: 'Comprehensive healthcare application for managing patient records and hospital operations',
       status: 'active',

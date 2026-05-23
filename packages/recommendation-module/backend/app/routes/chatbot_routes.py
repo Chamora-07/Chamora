@@ -13,3 +13,26 @@ def chatbot_handler(request: ChatRequest):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot request failed: {str(e)}")
+    
+
+from app.services.chat_history_service import (
+    get_chat_sessions,
+    get_chat_messages
+)
+@router.get("/chat/sessions/{app_id}")
+def list_chat_sessions(app_id: str):
+    sessions = get_chat_sessions(app_id)
+
+    return {
+        "sessions": sessions
+    }
+
+@router.get("/chat/messages/{session_id}")
+def get_session_messages(session_id: str):
+    messages = get_chat_messages(session_id)
+
+    return {
+        "messages": messages
+    }
+
+
