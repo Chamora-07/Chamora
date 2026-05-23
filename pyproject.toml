@@ -21,7 +21,11 @@ dependencies = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/*"]
+members = [
+    "packages/metrics_retriever",
+    "packages/feature_builder",
+    "packages/rule_engine"
+]
 
 [tool.uv.sources]
 metrics_retriever = { workspace = true }
