@@ -19,24 +19,25 @@ class KafkaManager:
     def delivery_report(self, err, msg):
         """
         Reports the success or failure of a message delivery.
-        The key here is our application_id.
+        The key here is our config_id.
         """
         if err is not None:
             # Decode key for better error logging
-            app_id = msg.key().decode('utf-8') if msg.key() else "Unknown"
-            logger.error(f"Delivery failed for App ID {app_id}: {err}")
+            config_id = msg.key().decode('utf-8') if msg.key() else "Unknown"
+            logger.error(f"Delivery failed for Config ID {config_id}: {err}")
         else:
             # During development, we keep this to verify the 'Identity Thread'
-            app_id = msg.key().decode('utf-8') if msg.key() else "Unknown"
+            config_id = msg.key().decode('utf-8') if msg.key() else "Unknown"
             logger.info(
-                f"App {app_id} metrics -> {msg.topic()} "
+                f"Config {config_id} metrics -> {msg.topic()} "
                 f"partition [{msg.partition()}] @ offset {msg.offset()}"
             )
 
     def produce(self, key: str, data: dict):
         """
         Pushes a metric packet to Kafka.
-        'key' MUST be the application_id (as a string).
+        'key' MUST be the config_id (as a string) to ensure
+        each config routes to its own partition independently.
         """
         try:
             # Ensure the key is a string for Kafka

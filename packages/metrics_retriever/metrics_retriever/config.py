@@ -5,10 +5,6 @@ class Settings(BaseSettings):
     # --- Database Connectivity (The New Addition) ---
     # This is required for the RetrieverDBManager to poll Supabase
     database_url: str = Field(..., alias="DATABASE_URL")
-    
-    # --- Data Source (External VictoriaMetrics) ---
-    vm_url: str = Field(..., alias="VM_URL")
-    
     # --- Data Destination (Local Kafka in Docker) ---
     kafka_bootstrap_servers: str = Field("kafka:29092", alias="KAFKA_BOOTSTRAP_SERVERS")
     kafka_topic: str = Field("raw_metrics", alias="KAFKA_TOPIC")

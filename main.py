@@ -1,5 +1,6 @@
 import logging
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
@@ -42,6 +43,36 @@ app = FastAPI(
     title="Chamora",
     version="1.0.0",
     lifespan=lifespan
+)
+
+frontend_origins_env = os.getenv("FRONTEND_ORIGINS", "").strip()
+frontend_origins = (
+    [origin.strip() for origin in frontend_origins_env.split(",") if origin.strip()]
+    if frontend_origins_env
+    else [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+)
+
+frontend_origin_regex = os.getenv(
+    "FRONTEND_ORIGIN_REGEX",
+    r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=frontend_origins,
+    allow_origin_regex=frontend_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Plug in the component routers

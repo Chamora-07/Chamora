@@ -415,7 +415,7 @@ export function OnboardingPage({ onBackToDashboard }: OnboardingPageProps) {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-slate-800">Test Cycles Configuration</h2>
-                <p className="text-sm text-slate-600">Upload JMeter test scripts and provide test cycle details</p>
+                <p className="text-sm text-slate-600">Upload k6 test scripts and provide test cycle details</p>
               </div>
             </div>
 
@@ -465,12 +465,12 @@ export function OnboardingPage({ onBackToDashboard }: OnboardingPageProps) {
               {/* File Upload */}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Upload Test Script File (JMeter) <span className="text-red-500">*</span>
+                  Upload Test Script File (k6) <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
                     type="file"
-                    accept=".jmx,.xml"
+                    accept=".js,.mjs"
                     onChange={handleScriptFileUpload}
                     className="hidden"
                     id="script-upload"
@@ -484,7 +484,7 @@ export function OnboardingPage({ onBackToDashboard }: OnboardingPageProps) {
                       <p className="font-semibold text-slate-700">
                         {phase2Data.scriptFileName || 'Click to upload or drag and drop'}
                       </p>
-                      <p className="text-sm text-slate-500 mt-1">JMX or XML files only</p>
+                      <p className="text-sm text-slate-500 mt-1">JS files only (k6 scripts)</p>
                     </div>
                   </label>
                 </div>
