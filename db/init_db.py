@@ -3,6 +3,7 @@ import asyncio
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
+from sqlalchemy import text
 from db.base import Base
 from db.models import User, Application, Endpoint, Document, TestScript, TestRun , AnomalyDetectionConfig
 
@@ -35,6 +36,48 @@ async def init_models():
     except Exception as e:
         print(f"Initialization failed: {e}")
         
+    finally:
+        await engine.dispose()
+
+
+async def ensure_ml_inference_need_column():
+    """
+    Backfills the `ml_inference_need` column when the database already exists.
+    `create_all()` does not alter existing tables, so this keeps older deployments working.
+    """
+    raw_url = os.getenv("DATABASE_URL")
+
+    if not raw_url:
+        print("Error: DATABASE_URL not found in .env file!")
+        return
+
+    db_url = raw_url.replace("postgresql://", "postgresql+asyncpg://")
+
+    engine = create_async_engine(
+        db_url,
+        poolclass=NullPool,
+        echo=False,
+        connect_args={
+            "prepared_statement_cache_size": 0,
+            "statement_cache_size": 0,
+        },
+    )
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "ALTER TABLE anomaly_detection_configs "
+                    "ADD COLUMN IF NOT EXISTS ml_inference_need BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+            await conn.execute(
+                text(
+                    "UPDATE anomaly_detection_configs "
+                    "SET ml_inference_need = FALSE "
+                    "WHERE ml_inference_need IS NULL"
+                )
+            )
     finally:
         await engine.dispose()
 

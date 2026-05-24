@@ -13,6 +13,7 @@ from metrics_retriever.router import router as retriever_router
 from metrics_retriever.router import manager as retriever_manager
 
 from api.v1.api_router import v1_router
+from db.init_db import ensure_ml_inference_need_column
 
 
 logging.basicConfig(
@@ -26,6 +27,7 @@ logger = logging.getLogger("CHAMORA")
 async def lifespan(app: FastAPI):
     # --- STARTUP PHASE ---
     logger.info("Initializing Chamora...")
+    await ensure_ml_inference_need_column()
     # Start the Metrics Retriever component
     await retriever_manager.start()
     logger.info("Retriever Manager is active and monitoring.")

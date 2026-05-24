@@ -107,6 +107,7 @@ class AnomalyDetectionConfig(Base):
     endpoint: Mapped["Endpoint"] = relationship(back_populates="anomaly_config")
 
     ml_inference_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    ml_inference_need : Mapped[bool] = mapped_column(Boolean, default=False)
 
 class Anomaly(Base):
     """
@@ -149,3 +150,25 @@ class Anomaly(Base):
     # Relationships
     application: Mapped["Application"] = relationship()
     config: Mapped["AnomalyDetectionConfig"] = relationship()
+
+class MLModelMetric(Base):
+    """Stores the historical 'IQ' scores of the ML model for user visibility."""
+    __tablename__ = "ml_model_metrics"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), 
+        primary_key=True, 
+        server_default=func.gen_random_uuid()
+    )
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"), index=True)
+    config_id: Mapped[int] = mapped_column(ForeignKey("anomaly_detection_configs.id", ondelete="CASCADE"), index=True)
+    
+    model_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    recall_score: Mapped[float] = mapped_column(Float, nullable=False)
+    precision_score: Mapped[float] = mapped_column(Float, default=0.0)
+    accuracy_score: Mapped[float] = mapped_column(Float, default=0.0)
+    f1_score: Mapped[float] = mapped_column(Float, default=0.0)
+    evaluation_type: Mapped[str] = mapped_column(String(20), nullable=False) # 'rule_based' or 'synthetic'
+    is_promoted: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

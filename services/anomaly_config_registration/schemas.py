@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 
 class AnomalyConfigCreate(BaseModel):
     endpoint_id: int
@@ -34,6 +35,7 @@ class AnomalyConfigResponse(BaseModel):
     disk_io_threshold: float
     cpu_node_ratio_threshold: float
     is_active: bool
+    ml_inference_need: bool
     created_at: datetime
 
     class Config:
@@ -53,6 +55,23 @@ class AnomalyConfigSummaryResponse(BaseModel):
     disk_io_threshold: float
     cpu_node_ratio_threshold: float
     is_active: bool
+    ml_inference_need: bool
     created_at: datetime
     anomaly_count: int
+
+
+class MLModelMetricResponse(BaseModel):
+    id: UUID
+    config_id: int
+    model_version: str
+    recall_score: float
+    precision_score: float
+    accuracy_score: float
+    f1_score: float
+    evaluation_type: str
+    is_promoted: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
         

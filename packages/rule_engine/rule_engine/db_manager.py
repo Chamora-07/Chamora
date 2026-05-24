@@ -2,8 +2,8 @@ import time
 import logging
 from datetime import datetime, timezone 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy import select
-from db.models import AnomalyDetectionConfig, Anomaly
+from sqlalchemy import select, desc
+from db.models import AnomalyDetectionConfig, Anomaly, MLModelMetric
 from .config import settings
 
 logger = logging.getLogger("rule-engine.db")
@@ -20,7 +20,9 @@ class RuleDBManager:
         self.Session = async_sessionmaker(bind=self.engine, expire_on_commit=False)
         self._config_cache = {}  # {endpoint_id: (config_obj, expiry_time)}
         self._ml_enabled_cache = {}  # {config_id: (is_enabled, expiry_time)}
+        self._promoted_model_cache = {}  # {config_id: (model_obj, expiry_time)}
         self.ML_CACHE_TTL = 86400  # 24 hours in seconds
+        self.PROMOTED_MODEL_CACHE_TTL = 300  # 5 minutes in seconds
 
     async def get_config(self, endpoint_id: int):
         """
@@ -115,3 +117,48 @@ class RuleDBManager:
                 self._ml_enabled_cache[config_id] = (False, now + 300)
                 logger.error(f"❌ [DB Error] Config {config_id}: {e}. Retrying in 5 minutes.")
                 return False
+
+    async def get_latest_promoted_ml_model(self, config_id: int):
+        """
+        Returns the latest promoted ML model metric row for a config.
+        The newest record is selected by created_at, then by id as a tie-breaker.
+        """
+        now = time.time()
+
+        if config_id in self._promoted_model_cache:
+            model_row, expiry = self._promoted_model_cache[config_id]
+            if now < expiry:
+                return model_row
+
+        logger.info(f"🔄 [DB Refresh] Checking latest promoted ML model for Config {config_id}...")
+
+        async with self.Session() as session:
+            try:
+                stmt = (
+                    select(MLModelMetric)
+                    .where(
+                        MLModelMetric.config_id == config_id,
+                        MLModelMetric.is_promoted == True
+                    )
+                    .order_by(desc(MLModelMetric.created_at), desc(MLModelMetric.id))
+                    .limit(1)
+                )
+                result = await session.execute(stmt)
+                model_row = result.scalar_one_or_none()
+
+                self._promoted_model_cache[config_id] = (model_row, now + self.PROMOTED_MODEL_CACHE_TTL)
+
+                if model_row:
+                    logger.warning(
+                        f"🤖 [Decision] Promoted ML model found for Config {config_id}: "
+                        f"version={model_row.model_version}, created_at={model_row.created_at}"
+                    )
+                else:
+                    logger.info(f"📜 [Decision] No promoted ML model found for Config {config_id}. Rules remain active.")
+
+                return model_row
+
+            except Exception as e:
+                self._promoted_model_cache[config_id] = (None, now + 300)
+                logger.error(f"❌ [DB Error] Failed to read promoted ML model for Config {config_id}: {e}. Retrying in 5 minutes.")
+                return None
