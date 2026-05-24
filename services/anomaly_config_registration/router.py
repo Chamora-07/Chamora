@@ -7,7 +7,12 @@ from services.auth.dependencies import get_current_user
 from db.models import User
 from packages.metrics_retriever.metrics_retriever.router import manager as retriever_manager
 
-from .schemas import AnomalyConfigCreate, AnomalyConfigUpdate, AnomalyConfigResponse
+from .schemas import (
+    AnomalyConfigCreate,
+    AnomalyConfigUpdate,
+    AnomalyConfigResponse,
+    AnomalyConfigSummaryResponse,
+)
 from . import service
 
 router = APIRouter()
@@ -30,6 +35,15 @@ async def get_all_configs(
     current_user: User = Depends(get_current_user)
 ):
     return await service.get_all_configs_for_user(db, current_user.id)
+
+
+@router.get("/application/{application_id}/summary", response_model=List[AnomalyConfigSummaryResponse])
+async def get_app_config_summary(
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return await service.get_application_config_summaries(db, application_id, current_user.id)
 
 
 @router.get("/endpoint/{endpoint_id}", response_model=AnomalyConfigResponse)

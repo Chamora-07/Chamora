@@ -106,6 +106,8 @@ class AnomalyDetectionConfig(Base):
     
     endpoint: Mapped["Endpoint"] = relationship(back_populates="anomaly_config")
 
+    ml_inference_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
 class Anomaly(Base):
     """
     Stores historical records of detected anomalies (WARNING and CRITICAL)
