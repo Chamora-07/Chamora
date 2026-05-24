@@ -139,9 +139,27 @@ services:
       - ./.env
     dns:
       - 8.8.8.8
-      - 8.8.4.4  
+      - 8.8.4.4
     networks:
       - anomaly_detection
+    restart: unless-stopped
+
+  test_cycle_comparison:
+    build:
+      context: .
+      dockerfile: packages/test_cycle_comparison/Dockerfile
+    container_name: test_cycle_comparison
+    ports:
+      - "8020:8000"
+    env_file:
+      - ./.env
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    networks:
+      - anomaly_detection
+    volumes:
+      - ./packages/test_cycle_comparison:/app
     restart: unless-stopped
 
 

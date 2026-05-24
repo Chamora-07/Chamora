@@ -34,3 +34,12 @@ async def get_application_count(
     """Get the total count of applications for the logged-in user."""
     count = await service.get_user_application_count(db, current_user.id)
     return {"count": count}
+
+@router.get("/{application_id}/endpoints", response_model=List[schemas.EndpointResponse])
+async def get_application_endpoints(
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """List endpoints for an application (used by the test-cycle comparison UI)."""
+    return await service.get_application_endpoints(db, application_id, current_user.id)
