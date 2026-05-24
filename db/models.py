@@ -73,7 +73,7 @@ class TestRun(Base):
     test_script_id: Mapped[int] = mapped_column(ForeignKey("test_scripts.id"))
     status: Mapped[str] = mapped_column(String(50))
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     result_file_path: Mapped[Optional[str]] = mapped_column(String(512))
     
