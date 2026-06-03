@@ -1,0 +1,191 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    networks:
+      - anomaly_detection
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    networks:
+      - anomaly_detection
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:29092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  kafka_ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka_ui
+    depends_on:
+      - kafka
+    ports:
+      - "8085:8080"
+    networks:
+      - anomaly_detection 
+    environment:
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  metrics_retriever:
+    build: 
+      context: .
+      dockerfile: packages/metrics_retriever/Dockerfile
+    container_name: metrics_retriever
+    depends_on:
+      - kafka
+    networks:
+      - anomaly_detection
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4    
+    env_file: .env
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app:/app/packages/metrics_retriever
+      - DATABASE_URL=${DATABASE_URL}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    volumes:
+      - .:/app
+    restart: always
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile 
+    container_name: chamora_backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - anomaly_detection
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4  
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    volumes:
+      - .:/app
+      - /app/.venv
+
+  feature_builder:
+    build:
+      context: .
+      dockerfile: packages/feature_builder/Dockerfile
+    container_name: feature_builder
+    depends_on:
+      - kafka
+      - metrics_retriever
+    networks:
+      - anomaly_detection
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app:/app/packages/feature_builder
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_RAW_TOPIC=raw_metrics
+      - KAFKA_FEATURE_TOPIC=processed_features
+    volumes:
+      - .:/app
+    restart: always
+
+  rule_engine:
+    build:
+      context: .
+      dockerfile: packages/rule_engine/Dockerfile
+    container_name: rule_engine
+    depends_on:
+      - kafka
+      - feature_builder
+    networks:
+      - anomaly_detection
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4  
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app:/app/packages/rule_engine
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC_FEATURES=processed_features
+      - KAFKA_CONSUMER_GROUP=chamora-rule-engine-v1
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - .:/app
+      - /app/.venv
+    restart: always
+
+  recommendation-module:
+    build:
+      context: .
+      dockerfile: packages/recommendation_module/backend/Dockerfile
+    container_name: recommendation-module
+    ports:
+      - "8010:8000"
+    env_file:
+      - ./packages/recommendation_module/backend/.env
+      - ./.env
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4  
+    networks:
+      - anomaly_detection
+    restart: unless-stopped
+
+  rca_engine:
+    build:
+      context: .
+      dockerfile: packages/rca_engine/Dockerfile
+    container_name: rca_engine
+    ports:
+      - "8020:8000"
+    env_file: .env
+    environment:
+      - CORS_ORIGINS=["*"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - anomaly_detection
+    restart: unless-stopped
+
+  k6_worker:
+    build:
+      context: .
+      dockerfile: packages/k6_worker/Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - anomaly_detection
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    env_file: .env
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+networks:
+  anomaly_detection:
+    driver: bridge
