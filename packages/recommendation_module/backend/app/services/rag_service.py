@@ -1,4 +1,3 @@
-'''
 import hashlib
 import json
 from pathlib import Path
@@ -194,7 +193,7 @@ def index_documents_for_app(app_id):
     save_index_cache(cache)
 
 
-def retrieve_relevant_chunks(app_id, question, top_k=5):
+def retrieve_relevant_chunks(app_id: str, question: str, top_k: int = 5):
     index_documents_for_app(app_id)
 
     collection = get_chroma_collection()
@@ -253,19 +252,3 @@ def format_retrieved_knowledge(retrieved_chunks):
         parts.append(f"[Chunk {idx} | Source: {source}]\n{text}")
 
     return "\n\n".join(parts)
-
-'''
-
-def retrieve_relevant_chunks(query: str, app_id: str):
-    # Temporary lightweight retrieval (no embeddings)
-    # Later you can replace this with vector DB / embeddings
-
-    return [
-        "No knowledge base connected yet.",
-        "RAG system currently running in fallback mode.",
-        f"User query: {query}"
-    ]
-
-
-def format_retrieved_knowledge(chunks):
-    return "\n".join(chunks)

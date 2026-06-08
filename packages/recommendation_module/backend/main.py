@@ -15,7 +15,7 @@ app.add_middleware(
 )
 
 app.include_router(dashboard_router)
-app.include_router(chatbot_router)
+app.include_router(chatbot_router, prefix="/api/v1")
 
 
 @app.get("/health")

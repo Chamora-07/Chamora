@@ -7,11 +7,7 @@ from .test_comparison_service import (
     extract_requested_metrics,
     get_test_cycle_comparison,
 )
-from .chat_history_service import (
-    create_chat_session,
-    store_chat_message,
-    store_recommendation_history,
-)
+# Chat history and session storage removed for stateless chatbot
 
 
 def detect_question_type(question):
@@ -40,40 +36,11 @@ def detect_question_type(question):
         "compare tests",
     ]
 
-    application_keywords = [
-        "my application",
-        "my app",
-        "tech stack",
-        "application details",
-        "application metadata",
-        "my environment",
-        "my documents",
-        "uploaded documents",
-        "explain my application",
-        "explain about my application",
-    ]
-
-    common_keywords = [
-        "what is machine learning",
-        "tell me a joke",
-        "capital of",
-        "who is",
-        "history of",
-        "weather",
-        "translate",
-    ]
-
     if any(keyword in q for keyword in anomaly_keywords):
         return "anomaly"
 
     if any(keyword in q for keyword in test_keywords):
         return "test_comparison"
-
-    if any(keyword in q for keyword in application_keywords):
-        return "application"
-
-    if any(keyword in q for keyword in common_keywords):
-        return "common_blocked"
 
     return "application"
 
@@ -86,7 +53,10 @@ def build_application_system_prompt():
     return (
         "You are Chamora, an AI assistant that provides customized recommendations "
         "for the user's selected application. "
-        "Answer only in the context of the provided application data. "
+        "Answer ONLY questions that are directly related to the provided application data, documents, or context. "
+        "If the user asks a general knowledge question unrelated to this application "
+        "(such as 'What is AI?', 'What is ML?', or any topic not in the application context), "
+        "respond ONLY with: 'Chamora aims to provide customized answers for application related questions'. "
         "Be practical, clear, and specific. "
         "Use clean markdown with short bullet points when useful."
     )
@@ -249,14 +219,7 @@ Instructions
 """.strip()
 
 
-def blocked_common_response():
-    return {
-        "answer": "Chamora aims to provide customized recommendations and assistance for your application, not general answers as other chatbots.",
-        "mode": "advisory",
-    }
-
-
-def handle_application_question(app_id, question, session_id, user_id):
+def handle_application_question(app_id, question, user_id=None):
     context = build_chatbot_context(app_id)
 
     retrieved_chunks = retrieve_relevant_chunks(app_id, question, top_k=2)
@@ -277,16 +240,7 @@ def handle_application_question(app_id, question, session_id, user_id):
             f"{context['metrics']['memory_percent']}%."
         )
 
-    store_chat_message(session_id, app_id, user_id, "assistant", answer, "application")
-    store_recommendation_history(
-        app_id,
-        user_id,
-        session_id,
-        question,
-        answer,
-        context["mode"],
-        [],
-    )
+    # Stateless: do not store chat history or session information
 
     return {
         "answer": answer,
@@ -294,14 +248,13 @@ def handle_application_question(app_id, question, session_id, user_id):
     }
 
 
-def handle_anomaly_question(app_id, question, session_id, user_id):
+def handle_anomaly_question(app_id, question, user_id=None):
     context = build_chatbot_context(app_id)
     latest_state = get_latest_anomaly_for_app(app_id)
     anomaly_records = get_anomalies_by_time_window(app_id, question)
 
     if not anomaly_records:
         answer = "No anomaly records were found for the requested time window."
-        store_chat_message(session_id, app_id, user_id, "assistant", answer, "anomaly")
         return {
             "answer": answer,
             "mode": latest_state.get("mode", "advisory"),
@@ -311,16 +264,7 @@ def handle_anomaly_question(app_id, question, session_id, user_id):
     user_prompt = build_anomaly_user_prompt(context, anomaly_records, question)
     answer = generate_llm_response(system_prompt, user_prompt)
 
-    store_chat_message(session_id, app_id, user_id, "assistant", answer, "anomaly")
-    store_recommendation_history(
-        app_id,
-        user_id,
-        session_id,
-        question,
-        answer,
-        latest_state.get("mode", "diagnostic"),
-        [],
-    )
+    # Stateless: do not store chat history or session information
 
     return {
         "answer": answer,
@@ -328,7 +272,7 @@ def handle_anomaly_question(app_id, question, session_id, user_id):
     }
 
 
-def handle_test_comparison_question(app_id, question, session_id, user_id):
+def handle_test_comparison_question(app_id, question, user_id=None):
     context = build_chatbot_context(app_id)
     cycle_a, cycle_b = extract_cycle_numbers(question)
     metrics = extract_requested_metrics(question)
@@ -339,7 +283,6 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
             "you want to focus on, such as response time, throughput, error rate, CPU, or memory.\n\n"
             "Example: Compare cycle 2 and cycle 5 for response time and throughput."
         )
-        store_chat_message(session_id, app_id, user_id, "assistant", answer, "clarification")
         return {
             "answer": answer,
             "mode": "advisory",
@@ -370,16 +313,7 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
             f"Regression detected: {'Yes' if comparison_data['regression_detected'] else 'No'}."
         )
 
-    store_chat_message(session_id, app_id, user_id, "assistant", answer, "test_comparison")
-    store_recommendation_history(
-        app_id,
-        user_id,
-        session_id,
-        question,
-        answer,
-        "advisory",
-        [],
-    )
+    # Stateless: do not store chat history or session information
 
     return {
         "answer": answer,
@@ -387,32 +321,17 @@ def handle_test_comparison_question(app_id, question, session_id, user_id):
     }
 
 
-def handle_chatbot_question(app_id, question, user_id=None, session_id=None):
+def handle_chatbot_question(app_id, question, user_id=None):
     question_type = detect_question_type(question)
-    context = build_chatbot_context(app_id)
-
-    if not session_id:
-        session = create_chat_session(app_id, user_id, context["mode"])
-        session_id = session["id"] if "id" in session else session["session_id"]
-
-    store_chat_message(session_id, app_id, user_id, "user", question, question_type)
-
-    if question_type == "common_blocked":
-        answer = blocked_common_response()
-        store_chat_message(session_id, app_id, user_id, "assistant", answer["answer"], "common_blocked")
-        return {**answer, "session_id": session_id}
 
     if question_type == "anomaly":
-        response = handle_anomaly_question(app_id, question, session_id, user_id)
-        return {**response, "session_id": session_id}
+        return handle_anomaly_question(app_id, question, user_id)
 
     if question_type == "test_comparison":
-        response = handle_test_comparison_question(app_id, question, session_id, user_id)
-        return {**response, "session_id": session_id}
+        return handle_test_comparison_question(app_id, question, user_id)
 
-    response = handle_application_question(app_id, question, session_id, user_id)
-    return {**response, "session_id": session_id}
+    return handle_application_question(app_id, question, user_id)
 
 
-def generate_demo_chat_response(app_id, question, session_id=None):
-    return handle_chatbot_question(app_id, question, None, session_id)
+def generate_demo_chat_response(app_id, question):
+    return handle_chatbot_question(app_id, question)
