@@ -96,7 +96,7 @@ class MetricsScraper:
             "metrics": metrics_payload
         }
 
-        kafka_mgr.produce(key=str(job['config_id']), data=full_payload)
+        await kafka_mgr.produce_async(key=str(job['config_id']), data=full_payload)
 
     async def run_scrape_batch(self, active_jobs: List[Dict]):
         """

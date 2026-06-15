@@ -1,4 +1,4 @@
-from passlib.context import CryptContext
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import os
@@ -11,15 +11,13 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 def hash_password(password: str) -> str:
     hashed = hashlib.sha256(password.encode("utf-8")).hexdigest()
-    return pwd_context.hash(hashed)
+    return bcrypt.hashpw(hashed.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     hashed = hashlib.sha256(plain_password.encode("utf-8")).hexdigest()
-    return pwd_context.verify(hashed, hashed_password)
+    return bcrypt.checkpw(hashed.encode("utf-8"), hashed_password.encode("utf-8"))
 
 def create_access_token(data: dict):
     to_encode = data.copy()
