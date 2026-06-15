@@ -7,8 +7,6 @@ python-dotenv
 pydantic
 groq
 chromadb
-#sentence-transformers
+fastembed
 pypdf
 supabase
-#sentence-transformers
-#vecs

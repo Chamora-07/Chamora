@@ -3,8 +3,7 @@ import json
 from pathlib import Path
 
 import chromadb
-from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from pypdf import PdfReader
 
 
@@ -13,9 +12,11 @@ KNOWLEDGE_BASE_DIR = BASE_DIR / "knowledge_base"
 RAG_STORE_DIR = BASE_DIR / "rag_store"
 RAG_CACHE_DIR = BASE_DIR / "rag_cache"
 RAG_CACHE_FILE = RAG_CACHE_DIR / "indexed_files.json"
+MODEL_CACHE_DIR = BASE_DIR / "model_cache"
 
 RAG_STORE_DIR.mkdir(parents=True, exist_ok=True)
 RAG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 _embedding_model = None
@@ -26,7 +27,10 @@ _collection = None
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        _embedding_model = TextEmbedding(
+            "sentence-transformers/all-MiniLM-L6-v2",
+            cache_dir=str(MODEL_CACHE_DIR),
+        )
     return _embedding_model
 
 
@@ -160,7 +164,7 @@ def index_documents_for_app(app_id):
                 }
             )
 
-        embeddings = model.encode(chunk_texts).tolist()
+        embeddings = [emb.tolist() for emb in model.embed(chunk_texts)]
 
         try:
             existing = collection.get(ids=chunk_ids)
@@ -197,13 +201,17 @@ def retrieve_relevant_chunks(app_id: str, question: str, top_k: int = 5):
     index_documents_for_app(app_id)
 
     collection = get_chroma_collection()
+    total_docs = collection.count()
+    if total_docs == 0:
+        return []
+
     model = get_embedding_model()
+    query_embedding = list(model.embed([question]))[0].tolist()
 
-    query_embedding = model.encode(question).tolist()
-
+    n_app = min(top_k, total_docs)
     results = collection.query(
         query_embeddings=[query_embedding],
-        n_results=top_k,
+        n_results=n_app,
         where={"application_id": app_id},
     )
 
@@ -221,22 +229,24 @@ def retrieve_relevant_chunks(app_id: str, question: str, top_k: int = 5):
 
     # Also retrieve from common docs if app-specific docs are too few
     if len(retrieved) < top_k:
-        extra_results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k - len(retrieved),
-            where={"category": "common"},
-        )
-
-        extra_docs = extra_results.get("documents", [[]])[0]
-        extra_metas = extra_results.get("metadatas", [[]])[0]
-
-        for doc, meta in zip(extra_docs, extra_metas):
-            retrieved.append(
-                {
-                    "text": doc,
-                    "metadata": meta,
-                }
+        n_extra = min(top_k - len(retrieved), total_docs)
+        if n_extra > 0:
+            extra_results = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=n_extra,
+                where={"category": "common"},
             )
+
+            extra_docs = extra_results.get("documents", [[]])[0]
+            extra_metas = extra_results.get("metadatas", [[]])[0]
+
+            for doc, meta in zip(extra_docs, extra_metas):
+                retrieved.append(
+                    {
+                        "text": doc,
+                        "metadata": meta,
+                    }
+                )
 
     return retrieved
 
