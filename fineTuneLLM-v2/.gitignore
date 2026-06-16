@@ -1,0 +1,29 @@
+# Ignore the large 3.1 GB model weights binary
+qwen-sre.gguf
+*.gguf
+
+# Ignore local Python virtual environments
+.venv/
+venv/
+ENV/
+
+# Ignore fine-tuning outputs, adapters, and merged models
+qwen-sre-adapter/
+qwen2.5-1.5b-sre-merged/
+*-adapter/
+*-merged/
+
+# Training logs, checkpoints, and caches
+checkpoints/
+runs/
+wandb/
+.cache/
+
+# Ignore Python bytecode caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS metadata
+.DS_Store
+Thumbs.db
