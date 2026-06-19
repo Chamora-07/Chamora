@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from ..schemas.dashboard import DashboardResponse
 from ..services.dashboard_service import get_dashboard_data
@@ -6,9 +8,9 @@ router = APIRouter()
 
 
 @router.get("/{app_id}", response_model=DashboardResponse)
-def dashboard(app_id: str):
+async def dashboard(app_id: str):
     try:
-        return get_dashboard_data(app_id)
+        return await asyncio.to_thread(get_dashboard_data, app_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -16,9 +18,9 @@ def dashboard(app_id: str):
 
 
 @router.get("/{app_id}/health")
-def dashboard_health(app_id: str):
+async def dashboard_health(app_id: str):
     try:
-        data = get_dashboard_data(app_id)
+        data = await asyncio.to_thread(get_dashboard_data, app_id)
         return {
             "status": "ok",
             "app_id": app_id,
@@ -34,10 +36,10 @@ def dashboard_health(app_id: str):
         raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
     
 @router.get("/{app_id}/context-check")
-def context_check(app_id: str):
+async def context_check(app_id: str):
     try:
         from ..services.application_context_service import get_application_context
-        return get_application_context(app_id)
+        return await asyncio.to_thread(get_application_context, app_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

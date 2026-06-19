@@ -15,7 +15,11 @@ class RuleDBManager:
             connect_args={
                 "prepared_statement_cache_size": 0,
                 "statement_cache_size": 0
-            }
+            },
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=3,
+            pool_recycle=1800,
         )
         self.Session = async_sessionmaker(bind=self.engine, expire_on_commit=False)
         self._config_cache = {}  # {endpoint_id: (config_obj, expiry_time)}

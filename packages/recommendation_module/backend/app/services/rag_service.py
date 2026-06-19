@@ -197,8 +197,18 @@ def index_documents_for_app(app_id):
     save_index_cache(cache)
 
 
+_last_indexed: dict[str, float] = {}  # {app_id: timestamp}
+_INDEX_INTERVAL_SECONDS = 300  # Re-index at most every 5 minutes per app
+
+
 def retrieve_relevant_chunks(app_id: str, question: str, top_k: int = 5):
-    index_documents_for_app(app_id)
+    import time
+
+    now = time.time()
+    last = _last_indexed.get(app_id, 0.0)
+    if now - last > _INDEX_INTERVAL_SECONDS:
+        index_documents_for_app(app_id)
+        _last_indexed[app_id] = now
 
     collection = get_chroma_collection()
     total_docs = collection.count()
