@@ -44,42 +44,24 @@ async def ensure_ml_inference_need_column():
     """
     Backfills the `ml_inference_need` column when the database already exists.
     `create_all()` does not alter existing tables, so this keeps older deployments working.
+    Reuses the shared engine to avoid creating a disposable connection.
     """
-    raw_url = os.getenv("DATABASE_URL")
+    from db.connection import engine
 
-    if not raw_url:
-        print("Error: DATABASE_URL not found in .env file!")
-        return
-
-    db_url = raw_url.replace("postgresql://", "postgresql+asyncpg://")
-
-    engine = create_async_engine(
-        db_url,
-        poolclass=NullPool,
-        echo=False,
-        connect_args={
-            "prepared_statement_cache_size": 0,
-            "statement_cache_size": 0,
-        },
-    )
-
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "ALTER TABLE anomaly_detection_configs "
-                    "ADD COLUMN IF NOT EXISTS ml_inference_need BOOLEAN NOT NULL DEFAULT FALSE"
-                )
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "ALTER TABLE anomaly_detection_configs "
+                "ADD COLUMN IF NOT EXISTS ml_inference_need BOOLEAN NOT NULL DEFAULT FALSE"
             )
-            await conn.execute(
-                text(
-                    "UPDATE anomaly_detection_configs "
-                    "SET ml_inference_need = FALSE "
-                    "WHERE ml_inference_need IS NULL"
-                )
+        )
+        await conn.execute(
+            text(
+                "UPDATE anomaly_detection_configs "
+                "SET ml_inference_need = FALSE "
+                "WHERE ml_inference_need IS NULL"
             )
-    finally:
-        await engine.dispose()
+        )
 
 if __name__ == "__main__":
     try:
