@@ -1,26 +1,17 @@
-import os
+import logging
+from datetime import datetime, timezone
 from io import BytesIO
-from datetime import datetime
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
+
 from db.models import TestScript, Application, TestRun
-from supabase import create_client, Client
-from dotenv import load_dotenv
+from db.supabase_client import get_supabase, BUCKET_TEST_SCRIPTS, BUCKET_K6_RESULTS
 from packages.k6_worker.producer import publish_load_test_job
 
-load_dotenv()
-
-K6_SCRIPTS_BUCKET = "test_scripts"
-
-
-def get_supabase() -> Client:
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
-    if not url or not key:
-        raise RuntimeError("SUPABASE_URL or SUPABASE_KEY missing")
-    return create_client(url, key)
+logger = logging.getLogger(__name__)
 
 
 async def get_scripts_for_application(
@@ -69,7 +60,7 @@ async def upload_script(
     file_bytes = await file.read()
 
     try:
-        get_supabase().storage.from_(K6_SCRIPTS_BUCKET).upload(
+        get_supabase().storage.from_(BUCKET_TEST_SCRIPTS).upload(
             path=bucket_path,
             file=file_bytes,
             file_options={"content-type": "application/javascript"}
@@ -114,7 +105,7 @@ async def trigger_test_run(
     test_run = TestRun(
         test_script_id=script_id,
         status="queued",
-        start_time=datetime.utcnow(),
+        start_time=datetime.now(timezone.utc),
         end_time=None,
         result_file_path=None
     )
@@ -131,9 +122,9 @@ async def trigger_test_run(
             app_id=script.application_id,
             script_id=script.id
         )
-        print(f"[Service] Job {test_run.id} published to Kafka")
+        logger.info(f"Job {test_run.id} published to Kafka")
     except Exception as e:
-        print(f"[Service] Failed to publish job {test_run.id}: {e}")
+        logger.error(f"Failed to publish job {test_run.id}: {e}")
         test_run.status = "failed"
         await db.commit()
         raise HTTPException(status_code=500, detail=f"Failed to queue test: {str(e)}")
@@ -179,7 +170,7 @@ async def download_latest_result_for_script(
         )
 
     try:
-        data = get_supabase().storage.from_("k6_results").download(test_run.result_file_path)
+        data = get_supabase().storage.from_(BUCKET_K6_RESULTS).download(test_run.result_file_path)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to download result file: {exc}")
 

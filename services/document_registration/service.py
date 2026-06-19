@@ -2,17 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import UploadFile, HTTPException
 from db.models import Document, Application
-import os
-from supabase import create_client, Client
-from dotenv import load_dotenv
-
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-SUPABASE_BUCKET = "application-documents"
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+from db.supabase_client import get_supabase, BUCKET_APPLICATION_DOCUMENTS
 
 
 async def verify_application_ownership(
@@ -50,7 +40,7 @@ async def upload_to_bucket(file: UploadFile, app_id: int) -> str:
     file_bytes = await file.read()
 
     try:
-        supabase.storage.from_(SUPABASE_BUCKET).upload(
+        get_supabase().storage.from_(BUCKET_APPLICATION_DOCUMENTS).upload(
             path=bucket_path,
             file=file_bytes,
             file_options={
@@ -125,7 +115,7 @@ async def delete_document(
 
     # 3. Delete from Supabase storage
     try:
-        supabase.storage.from_(SUPABASE_BUCKET).remove([document.storage_path])
+        get_supabase().storage.from_(BUCKET_APPLICATION_DOCUMENTS).remove([document.storage_path])
     except Exception as e:
         raise HTTPException(
             status_code=500,
