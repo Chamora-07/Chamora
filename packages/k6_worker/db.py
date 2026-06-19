@@ -13,10 +13,13 @@ engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
+    pool_size=1,
+    max_overflow=2,
+    pool_recycle=1800,
     connect_args={
-        "statement_cache_size": 0,      
-        "prepared_statement_cache_size": 0
-    }
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+    },
 )
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
