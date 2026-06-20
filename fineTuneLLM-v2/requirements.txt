@@ -1,0 +1,9 @@
+# Core Telemetry Data Processing
+pandas>=2.0.0
+numpy>=1.20.0
+
+# LLM Inference API Calls
+requests>=2.25.0
+
+# Progress Tracking & CLI Helpers
+tqdm>=4.60.0

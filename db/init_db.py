@@ -3,6 +3,7 @@ import asyncio
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
+from sqlalchemy import text
 from db.base import Base
 from db.models import User, Application, Endpoint, Document, TestScript, TestRun , AnomalyDetectionConfig
 
@@ -37,6 +38,30 @@ async def init_models():
         
     finally:
         await engine.dispose()
+
+
+async def ensure_ml_inference_need_column():
+    """
+    Backfills the `ml_inference_need` column when the database already exists.
+    `create_all()` does not alter existing tables, so this keeps older deployments working.
+    Reuses the shared engine to avoid creating a disposable connection.
+    """
+    from db.connection import engine
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "ALTER TABLE anomaly_detection_configs "
+                "ADD COLUMN IF NOT EXISTS ml_inference_need BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+        )
+        await conn.execute(
+            text(
+                "UPDATE anomaly_detection_configs "
+                "SET ml_inference_need = FALSE "
+                "WHERE ml_inference_need IS NULL"
+            )
+        )
 
 if __name__ == "__main__":
     try:

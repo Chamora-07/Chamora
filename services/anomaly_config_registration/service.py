@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from fastapi import HTTPException
 
-from db.models import AnomalyDetectionConfig, Endpoint, Application, Anomaly
+from db.models import AnomalyDetectionConfig, Endpoint, Application, Anomaly, MLModelMetric
 from .schemas import AnomalyConfigCreate, AnomalyConfigUpdate
 
 
@@ -72,6 +72,10 @@ async def get_config_by_endpoint(
     config = result.scalar_one_or_none()
     if not config:
         raise HTTPException(status_code=404, detail="No config found for this endpoint.")
+
+    if config.ml_inference_need is None:
+        config.ml_inference_need = False
+
     return config
 
 
@@ -87,7 +91,13 @@ async def get_all_configs_for_user(
         .where(Application.user_id == user_id)
     )
     result = await db.execute(stmt)
-    return result.scalars().all()
+    configs = result.scalars().all()
+
+    for config in configs:
+        if config.ml_inference_need is None:
+            config.ml_inference_need = False
+
+    return configs
 
 
 async def update_config(
@@ -148,6 +158,7 @@ async def get_application_config_summaries(
             AnomalyDetectionConfig.disk_io_threshold,
             AnomalyDetectionConfig.cpu_node_ratio_threshold,
             AnomalyDetectionConfig.is_active,
+            AnomalyDetectionConfig.ml_inference_need,
             AnomalyDetectionConfig.created_at,
             func.count(Anomaly.id).label("anomaly_count"),
         )
@@ -168,11 +179,68 @@ async def get_application_config_summaries(
             AnomalyDetectionConfig.memory_pressure_threshold,
             AnomalyDetectionConfig.disk_io_threshold,
             AnomalyDetectionConfig.cpu_node_ratio_threshold,
-            AnomalyDetectionConfig.is_active,
+                AnomalyDetectionConfig.is_active,
+                AnomalyDetectionConfig.ml_inference_need,
             AnomalyDetectionConfig.created_at,
         )
         .order_by(AnomalyDetectionConfig.created_at.desc())
     )
 
     result = await db.execute(summary_stmt)
-    return [dict(row._mapping) for row in result]
+    summaries = []
+    for row in result:
+        summary = dict(row._mapping)
+        summary["ml_inference_need"] = bool(summary.get("ml_inference_need"))
+        summaries.append(summary)
+    return summaries
+
+
+async def toggle_ml_inference_need(
+    db: AsyncSession,
+    config_id: int,
+    user_id: int
+) -> AnomalyDetectionConfig:
+    """
+    Toggle the `ml_inference_need` flag for a given config id.
+    Ensures the requesting user owns the application/endpoint associated with the config.
+    """
+    # Validate ownership by joining through endpoint -> application
+    stmt = (
+        select(AnomalyDetectionConfig)
+        .join(Endpoint, AnomalyDetectionConfig.endpoint_id == Endpoint.id)
+        .join(Application, Endpoint.application_id == Application.id)
+        .where(AnomalyDetectionConfig.id == config_id)
+        .where(Application.user_id == user_id)
+    )
+
+    result = await db.execute(stmt)
+    config = result.scalar_one_or_none()
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found or not owned by your account.")
+
+    if config.ml_inference_need is None:
+        config.ml_inference_need = False
+
+    # Toggle and persist
+    config.ml_inference_need = not bool(config.ml_inference_need)
+    await db.commit()
+    await db.refresh(config)
+    return config
+
+
+async def get_model_metrics_for_config(
+    db: AsyncSession,
+    config_id: int,
+    user_id: int
+) -> list[MLModelMetric]:
+    stmt = (
+        select(MLModelMetric)
+        .join(AnomalyDetectionConfig, MLModelMetric.config_id == AnomalyDetectionConfig.id)
+        .join(Endpoint, AnomalyDetectionConfig.endpoint_id == Endpoint.id)
+        .join(Application, Endpoint.application_id == Application.id)
+        .where(MLModelMetric.config_id == config_id)
+        .where(Application.user_id == user_id)
+        .order_by(MLModelMetric.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()

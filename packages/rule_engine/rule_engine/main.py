@@ -57,9 +57,19 @@ async def start_engine():
                     continue
 
                 ml_active = await db.is_ml_inference_enabled(config_id)
-                if ml_active:
-                    # logger.info(f"ML Inference detected as ENABLED for Config {config_id}. Rule-based suppression active for 24h.")
+                promoted_model = await db.get_latest_promoted_ml_model(config_id)
+                if ml_active and promoted_model:
+                    logger.info(
+                        f"🤖 ML inference enabled and promoted model available for Config {config_id}. "
+                        f"Suppressing rule-based detection using model_version={promoted_model.model_version}."
+                    )
                     continue
+
+                if ml_active and not promoted_model:
+                    logger.warning(
+                        f"⚠️ ML inference is enabled for Config {config_id}, but no promoted model was found. "
+                        "Rule-based detection remains active."
+                    )
 
                 # ✅ Window buffer keyed by config_id — isolates each endpoint
                 verdict = judge.evaluate(config_id, data, cfg)
