@@ -34,3 +34,12 @@ async def get_application_count(
     """Get the total count of applications for the logged-in user."""
     count = await service.get_user_application_count(db, current_user.id)
     return {"count": count}
+
+@router.get("/{app_id}/health-check")
+async def get_application_health(
+    app_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Ping the application's health endpoint and return its status."""
+    return await service.check_application_health(db, app_id, current_user.id)
