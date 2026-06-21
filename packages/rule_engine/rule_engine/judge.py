@@ -94,6 +94,26 @@ class SlidingWindowJudge:
             score = min(1.0, score + 0.3)
             cause = "IO_WAIT_CONTENTION"
 
+        # Memory Exhaustion / Leak Correlation
+        if mu.get('memory_pressure', 0) > (cfg.memory_pressure_threshold * 0.9) and mu.get('memory_growth_rate', 0) > 0.05:
+            score = min(1.0, score + 0.4)
+            cause = "MEMORY_EXHAUSTION_OR_LEAK"
+
+        # Crash Loop Correlation
+        if mu.get('error_rate', 0) > cfg.error_rate_threshold and mu.get('has_restart'):
+            score = min(1.0, score + 0.5)
+            cause = "CRASH_LOOP_DETECTED"
+            
+        # Resource Thrashing Correlation
+        if mu.get('cpu_usage_rate', 0) > (cfg.cpu_usage_threshold * 0.8) and mu.get('memory_pressure', 0) > (cfg.memory_pressure_threshold * 0.8):
+            score = min(1.0, score + 0.4)
+            cause = "RESOURCE_THRASHING"
+            
+        # Persistent Failure with Degradation Correlation
+        if mu.get('failure_streak', 0) >= cfg.failure_streak_limit and mu.get('latency_p95', 0) > cfg.latency_threshold:
+            score = min(1.0, score + 0.3)
+            cause = "PERSISTENT_FAILURE_WITH_DEGRADATION"
+
         logger.info(
             f"🔍 DEBUG | Config {config_id} | Score: {score:.2f} | "
             f"Latency: {mu.get('latency_p95', 0):.4f} | "
