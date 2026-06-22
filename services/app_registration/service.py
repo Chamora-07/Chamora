@@ -105,3 +105,30 @@ async def check_application_health(db: AsyncSession, app_id: int, user_id: int) 
         pass
         
     return {"status": "inactive"}
+
+
+async def check_monitoring_status(db: AsyncSession, app_id: int, user_id: int) -> dict:
+    """
+    Checks the Victoria Metrics monitoring endpoint of the application.
+    """
+    query = select(Application).where(Application.id == app_id, Application.user_id == user_id)
+    result = await db.execute(query)
+    app = result.scalar_one_or_none()
+    
+    if not app or not app.victoria_metrics_url:
+        return {"status": "pending", "message": "Monitoring Pending"}
+        
+    try:
+        url = app.victoria_metrics_url
+        if not url.startswith('http://') and not url.startswith('https://'):
+            url = f"http://{url}"
+            
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(url, params={"query": "1"})
+            if response.status_code == 200:
+                return {"status": "connected", "message": "Monitoring Connected"}
+    except Exception:
+        pass
+        
+    return {"status": "failed", "message": "Monitoring Failed"}
+
