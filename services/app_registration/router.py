@@ -35,6 +35,15 @@ async def get_application_count(
     count = await service.get_user_application_count(db, current_user.id)
     return {"count": count}
 
+@router.get("/{application_id}/endpoints", response_model=List[schemas.EndpointResponse])
+async def get_application_endpoints(
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """List endpoints for an application (used by the test-cycle comparison UI)."""
+    return await service.get_application_endpoints(db, application_id, current_user.id)
+
 @router.get("/{app_id}/health-check")
 async def get_application_health(
     app_id: int,
@@ -52,4 +61,4 @@ async def get_application_monitoring_status(
     current_user = Depends(get_current_user)
 ):
     """Check the connection to the application's Victoria Metrics endpoint and return its status."""
-    return await service.check_monitoring_status(db, app_id, current_user.id)
+    return await service.check_monitoring_status(db, app_id, current_user.id)

@@ -1,0 +1,13 @@
+[project]
+name = "test-cycle-comparison"
+version = "0.1.0"
+description = "Chamora test cycle comparison service"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "httpx",
+    "python-dotenv",
+    "pydantic",
+    "supabase",
+]

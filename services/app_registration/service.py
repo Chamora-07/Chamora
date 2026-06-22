@@ -1,4 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
 from db.models import Application, Endpoint
 from .schemas import ApplicationCreate, ApplicationResponse
 from typing import List
@@ -105,6 +106,32 @@ async def check_application_health(db: AsyncSession, app_id: int, user_id: int) 
         pass
         
     return {"status": "inactive"}
+
+async def get_application_endpoints(
+    db: AsyncSession, application_id: int, user_id: int
+) -> List[Endpoint]:
+    """
+    Returns endpoints for an application, after verifying ownership.
+    Used by the test-cycle comparison UI to populate the endpoint picker.
+    """
+    ownership_check = await db.execute(
+        select(Application)
+        .where(Application.id == application_id)
+        .where(Application.user_id == user_id)
+    )
+    if not ownership_check.scalar_one_or_none():
+        raise HTTPException(
+            status_code=404,
+            detail="Application not found or does not belong to your account.",
+        )
+
+    result = await db.execute(
+        select(Endpoint)
+        .where(Endpoint.application_id == application_id)
+        .order_by(Endpoint.id)
+    )
+    return result.scalars().all()
+
 
 
 async def check_monitoring_status(db: AsyncSession, app_id: int, user_id: int) -> dict:
