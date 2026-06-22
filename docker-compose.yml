@@ -147,7 +147,7 @@ services:
       - ./.env
     dns:
       - 8.8.8.8
-      - 8.8.4.4  
+      - 8.8.4.4
     networks:
       - anomaly_detection
     restart: unless-stopped
@@ -168,6 +168,7 @@ services:
       - anomaly_detection
     volumes:
       - ./packages/test_cycle_comparison:/app
+    restart: unless-stopped
 
   rca_engine:
     build:
