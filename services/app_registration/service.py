@@ -5,6 +5,7 @@ from .schemas import ApplicationCreate, ApplicationResponse
 from typing import List
 from sqlalchemy import select , func
 from sqlalchemy.orm import selectinload
+import httpx
 
 async def create_application(
     db: AsyncSession, 
@@ -29,7 +30,8 @@ async def create_application(
         description=app_data.description,
         github_repo=app_data.github_repo,
         grafana_url=app_data.grafana_url,
-        victoria_metrics_url=app_data.victoria_metrics_url
+        victoria_metrics_url=app_data.victoria_metrics_url,
+        health_endpoint=app_data.health_endpoint
     )
     
     db.add(new_app)
@@ -80,6 +82,30 @@ async def get_user_application_count(db: AsyncSession, user_id: int) -> int:
     result = await db.execute(query)
     return result.scalar() or 0
 
+async def check_application_health(db: AsyncSession, app_id: int, user_id: int) -> dict:
+    """
+    Checks the health endpoint of a given application.
+    """
+    query = select(Application).where(Application.id == app_id, Application.user_id == user_id)
+    result = await db.execute(query)
+    app = result.scalar_one_or_none()
+    
+    if not app or not app.health_endpoint:
+        return {"status": "inactive"}
+        
+    try:
+        url = app.health_endpoint
+        if not url.startswith('http://') and not url.startswith('https://'):
+            url = f"http://{url}"
+            
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(url)
+            if response.status_code in (200, 301, 302, 307, 308):
+                return {"status": "active"}
+    except Exception:
+        pass
+        
+    return {"status": "inactive"}
 
 async def get_application_endpoints(
     db: AsyncSession, application_id: int, user_id: int
@@ -107,4 +133,29 @@ async def get_application_endpoints(
     return result.scalars().all()
 
 
+
+async def check_monitoring_status(db: AsyncSession, app_id: int, user_id: int) -> dict:
+    """
+    Checks the Victoria Metrics monitoring endpoint of the application.
+    """
+    query = select(Application).where(Application.id == app_id, Application.user_id == user_id)
+    result = await db.execute(query)
+    app = result.scalar_one_or_none()
+    
+    if not app or not app.victoria_metrics_url:
+        return {"status": "pending", "message": "Monitoring Pending"}
+        
+    try:
+        url = app.victoria_metrics_url
+        if not url.startswith('http://') and not url.startswith('https://'):
+            url = f"http://{url}"
+            
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(url, params={"query": "1"})
+            if response.status_code == 200:
+                return {"status": "connected", "message": "Monitoring Connected"}
+    except Exception:
+        pass
+        
+    return {"status": "failed", "message": "Monitoring Failed"}
 

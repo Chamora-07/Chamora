@@ -43,3 +43,22 @@ async def get_application_endpoints(
 ):
     """List endpoints for an application (used by the test-cycle comparison UI)."""
     return await service.get_application_endpoints(db, application_id, current_user.id)
+
+@router.get("/{app_id}/health-check")
+async def get_application_health(
+    app_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Ping the application's health endpoint and return its status."""
+    return await service.check_application_health(db, app_id, current_user.id)
+
+
+@router.get("/{app_id}/monitoring-status")
+async def get_application_monitoring_status(
+    app_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Check the connection to the application's Victoria Metrics endpoint and return its status."""
+    return await service.check_monitoring_status(db, app_id, current_user.id)

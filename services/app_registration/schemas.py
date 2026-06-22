@@ -19,6 +19,7 @@ class ApplicationCreate(BaseModel):
     github_repo: Optional[str] = None
     grafana_url: Optional[str] = None
     victoria_metrics_url: Optional[str] = None
+    health_endpoint: Optional[str] = None
     endpoints: List[EndpointCreate] = []
 
 class ApplicationResponse(BaseModel):
@@ -28,6 +29,7 @@ class ApplicationResponse(BaseModel):
     github_repo: Optional[str]
     grafana_url: Optional[str]
     victoria_metrics_url: Optional[str]
+    health_endpoint: Optional[str] = None
     endpoints: List[EndpointResponse] = []
     
     model_config = ConfigDict(from_attributes=True)

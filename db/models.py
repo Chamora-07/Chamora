@@ -25,6 +25,7 @@ class Application(Base):
     github_repo: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     grafana_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     victoria_metrics_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    health_endpoint: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     
     owner: Mapped["User"] = relationship(back_populates="applications")
     endpoints: Mapped[List["Endpoint"]] = relationship(back_populates="application", cascade="all, delete")
