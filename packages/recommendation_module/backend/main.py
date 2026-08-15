@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routes.dashboard_routes import router as dashboard_router
 from app.routes.chatbot_routes import router as chatbot_router
+from app.routes.recommendation_routes import router as recommendation_router
 
 app = FastAPI(title=settings.APP_NAME)
 
@@ -14,9 +15,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(dashboard_router)
-app.include_router(chatbot_router, prefix="/api/v1")
-
 
 @app.get("/health")
 def health():
@@ -25,3 +23,8 @@ def health():
         "app_name": settings.APP_NAME,
         "environment": settings.APP_ENV
     }
+
+
+app.include_router(chatbot_router, prefix="/api/v1")
+app.include_router(recommendation_router, prefix="/api/v1")
+app.include_router(dashboard_router)

@@ -82,7 +82,7 @@ services:
       - 8.8.4.4  
     extra_hosts:
       - "host.docker.internal:host-gateway"
-      - "aws-1-ap-northeast-1.pooler.supabase.com:13.114.6.6"
+      - "aws-1-ap-northeast-1.pooler.supabase.com:57.182.231.186"
     env_file: .env
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -150,6 +150,8 @@ services:
       - 8.8.4.4
     networks:
       - anomaly_detection
+    volumes:
+      - ./packages/recommendation_module/backend:/app
     restart: unless-stopped
 
   test_cycle_comparison:
