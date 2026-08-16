@@ -4,10 +4,19 @@ __pycache__/
 *.pyd
 .Python
 
-venv/
-env/
+# Environment files
 .env
 *.env
+.env.*
+!.env.example
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# Build artifacts
 dist/
 build/
 *.egg-info/

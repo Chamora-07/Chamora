@@ -278,9 +278,14 @@ User Question
 Instructions
 - The "Total anomalies recorded" figure above is authoritative for any count/total question — never infer a count from how many records are listed in detail.
 - Explain what happened clearly, using the detailed records as illustrative examples only.
+<<<<<<< HEAD
 - Only state facts explicitly given above — do not guess or speculate.
 - Do not say a field is unknown, unspecified, or not provided — if missing, skip it silently.
 - Use markdown formatting freely — headings, tables, and bullets are all welcome where they help clarity.
+=======
+- Mention the requested time window if relevant.
+- Interpret severity, score, root cause, and evidence.
+>>>>>>> 8af87fd (Update application management endpoints and clean up unused recommendation module)
 - Give actionable recommendations.
 - Be complete and helpful, but avoid unnecessary repetition or filler.
 """.strip()

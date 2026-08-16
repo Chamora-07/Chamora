@@ -61,4 +61,112 @@ async def get_application_monitoring_status(
     current_user = Depends(get_current_user)
 ):
     """Check the connection to the application's Victoria Metrics endpoint and return its status."""
-    return await service.check_monitoring_status(db, app_id, current_user.id)
+    app = await service.get_application_by_id(db, app_id, current_user.id)
+    if not app.victoria_metrics_url:
+        return {"status": "pending", "message": "Monitoring Pending"}
+    try:
+        url = app.victoria_metrics_url
+        if not url.startswith('http://') and not url.startswith('https://'):
+            url = f"http://{url}"
+        async with service.httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(url, params={"query": "1"})
+            if response.status_code == 200:
+                return {"status": "connected", "message": "Monitoring Connected"}
+    except Exception:
+        pass
+    return {"status": "failed", "message": "Monitoring Failed"}
+
+@router.get("/{app_id}", response_model=schemas.ApplicationResponse)
+async def get_application(
+    app_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Get single application details by ID."""
+    return await service.get_application_by_id(db, app_id, current_user.id)
+
+@router.put("/{app_id}/victoria-metrics", response_model=schemas.ApplicationResponse)
+async def update_victoria_metrics(
+    app_id: int,
+    data: schemas.VictoriaMetricsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Update Victoria Metrics endpoint URL for the application."""
+    return await service.update_victoria_metrics_url(
+        db, app_id, current_user.id, data.victoria_metrics_url
+    )
+
+@router.put("/{app_id}/grafana", response_model=schemas.ApplicationResponse)
+async def update_grafana(
+    app_id: int,
+    data: schemas.GrafanaUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Update Grafana endpoint URL for the application."""
+    return await service.update_grafana_url(
+        db, app_id, current_user.id, data.grafana_url
+    )
+
+@router.put("/{app_id}/github-repo", response_model=schemas.ApplicationResponse)
+async def update_github_repo(
+    app_id: int,
+    data: schemas.GithubRepoUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Update GitHub repository URL/name for the application."""
+    return await service.update_github_repo(
+        db, app_id, current_user.id, data.github_repo
+    )
+
+@router.put("/{app_id}/health-endpoint", response_model=schemas.ApplicationResponse)
+async def update_health_endpoint(
+    app_id: int,
+    data: schemas.HealthEndpointUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Update health check endpoint URL for the application."""
+    return await service.update_health_endpoint(
+        db, app_id, current_user.id, data.health_endpoint
+    )
+
+
+@router.post("/{app_id}/endpoints", response_model=schemas.EndpointResponse)
+async def add_endpoint(
+    app_id: int,
+    endpoint_data: schemas.EndpointCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Add a new monitored target endpoint for the application."""
+    return await service.add_application_endpoint(
+        db, app_id, current_user.id, endpoint_data.target_name, endpoint_data.container_name
+    )
+
+@router.put("/{app_id}/endpoints/{endpoint_id}", response_model=schemas.EndpointResponse)
+async def update_endpoint(
+    app_id: int,
+    endpoint_id: int,
+    endpoint_data: schemas.EndpointUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Update an existing target endpoint for the application."""
+    return await service.update_application_endpoint(
+        db, app_id, endpoint_id, current_user.id, endpoint_data.target_name, endpoint_data.container_name
+    )
+
+@router.delete("/{app_id}/endpoints/{endpoint_id}", status_code=204)
+async def delete_endpoint(
+    app_id: int,
+    endpoint_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Delete a target endpoint for the application."""
+    await service.delete_application_endpoint(db, app_id, endpoint_id, current_user.id)
+    return None
+

@@ -22,6 +22,22 @@ class ApplicationCreate(BaseModel):
     health_endpoint: Optional[str] = None
     endpoints: List[EndpointCreate] = []
 
+class EndpointUpdate(BaseModel):
+    target_name: str
+    container_name: str
+
+class VictoriaMetricsUpdate(BaseModel):
+    victoria_metrics_url: str
+
+class GrafanaUpdate(BaseModel):
+    grafana_url: str
+
+class GithubRepoUpdate(BaseModel):
+    github_repo: str
+
+class HealthEndpointUpdate(BaseModel):
+    health_endpoint: str
+
 class ApplicationResponse(BaseModel):
     id: int
     name: str
