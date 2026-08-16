@@ -1,7 +1,11 @@
 from .groq_service import generate_llm_response
 from .rag_service import retrieve_relevant_chunks, format_retrieved_knowledge
 from .application_context_service import get_application_context
-from .anomaly_query_service import get_latest_anomaly_for_app, get_anomalies_by_time_window
+from .anomaly_query_service import (
+    get_latest_anomaly_for_app,
+    get_anomalies_by_time_window,
+    get_anomaly_counts_for_app,
+)
 from .test_comparison_service import (
     extract_cycle_numbers,
     extract_requested_metrics,
@@ -14,16 +18,17 @@ def detect_question_type(question):
     q = question.lower().strip()
 
     anomaly_keywords = [
-        "anomaly",
+        "anomal",          # stem — catches anomaly / anomalies / anomalous
         "diagnostic",
         "issue",
         "problem",
         "abnormal",
         "root cause",
-        "what happened yesterday",
-        "why there is an anomaly",
-        "why is there an anomaly",
-        "why did anomaly happen",
+        "what happened",
+        "went wrong",
+        "detected",
+        "why is there",
+        "why did",
     ]
 
     test_keywords = [
@@ -45,6 +50,17 @@ def detect_question_type(question):
     return "application"
 
 
+COUNT_KEYWORDS = [
+    "how many", "how much", "total anomal", "count of anomal",
+    "number of anomal", "until now", "so far", "to date", "to-date",
+]
+
+
+def is_count_question(question: str) -> bool:
+    q = question.lower().strip()
+    return any(k in q for k in COUNT_KEYWORDS)
+
+
 def build_chatbot_context(app_id):
     return get_application_context(app_id)
 
@@ -60,6 +76,7 @@ def build_application_system_prompt():
         "Be practical, clear, and specific. "
         "Use clean markdown with short bullet points when useful."
     )
+
 
 def build_application_user_prompt(context, question, retrieved_knowledge):
     containers = context["containers"]
@@ -123,8 +140,19 @@ def build_anomaly_system_prompt():
     )
 
 
-def build_anomaly_user_prompt(context: dict, anomaly_records: list[dict], question: str) -> str:
+def build_anomaly_user_prompt(
+    context: dict,
+    anomaly_records: list[dict],
+    question: str,
+    counts: dict,
+) -> str:
+    """counts must come from get_anomaly_counts_for_app — a real DB aggregate,
+    never from len(anomaly_records), which may be paginated/capped."""
     trimmed_records = anomaly_records[:3]
+    total = counts.get("total", 0)
+    severity_summary = ", ".join(
+        f"{v} {k}" for k, v in counts.items() if k != "total"
+    ) or "n/a"
 
     if not trimmed_records:
         anomaly_text = "No anomaly records were found for the requested time window."
@@ -157,13 +185,17 @@ Application Context
 - Current Mode: diagnostic
 
 Anomaly Records
+- Total anomalies recorded for this application (all time): {total} ({severity_summary})
+- Showing the {len(trimmed_records)} most relevant record(s) below as examples.
+
 {anomaly_text}
 
 User Question
 {question}
 
 Instructions
-- Explain what happened clearly.
+- The "Total anomalies recorded" figure above is authoritative for any count/total question — never infer a count from how many records are listed in detail.
+- Explain what happened clearly, using the detailed records as illustrative examples only.
 - Mention the requested time window if relevant.
 - Interpret severity, score, root cause, and evidence.
 - Give actionable recommendations.
@@ -240,8 +272,6 @@ def handle_application_question(app_id, question, user_id=None):
             f"{context['metrics']['memory_percent']}%."
         )
 
-    # Stateless: do not store chat history or session information
-
     return {
         "answer": answer,
         "mode": context["mode"],
@@ -251,9 +281,28 @@ def handle_application_question(app_id, question, user_id=None):
 def handle_anomaly_question(app_id, question, user_id=None):
     context = build_chatbot_context(app_id)
     latest_state = get_latest_anomaly_for_app(app_id)
+
+    # Always get the real, DB-aggregated count first — independent of any
+    # row cap or windowing on the detail query below.
+    counts = get_anomaly_counts_for_app(app_id)
+
+    if is_count_question(question):
+        total = counts.get("total", 0)
+        if total == 0:
+            answer = "No anomalies have been recorded for this application yet."
+        else:
+            breakdown = ", ".join(
+                f"{v} {k.lower()}" for k, v in counts.items() if k != "total"
+            )
+            answer = f"**{total}** anomalies have been recorded so far ({breakdown})."
+        return {
+            "answer": answer,
+            "mode": latest_state.get("mode", "advisory"),
+        }
+
     anomaly_records = get_anomalies_by_time_window(app_id, question)
 
-    if not anomaly_records:
+    if not anomaly_records and counts.get("total", 0) == 0:
         answer = "No anomaly records were found for the requested time window."
         return {
             "answer": answer,
@@ -261,10 +310,8 @@ def handle_anomaly_question(app_id, question, user_id=None):
         }
 
     system_prompt = build_anomaly_system_prompt()
-    user_prompt = build_anomaly_user_prompt(context, anomaly_records, question)
+    user_prompt = build_anomaly_user_prompt(context, anomaly_records, question, counts)
     answer = generate_llm_response(system_prompt, user_prompt)
-
-    # Stateless: do not store chat history or session information
 
     return {
         "answer": answer,
@@ -312,8 +359,6 @@ def handle_test_comparison_question(app_id, question, user_id=None):
             f"Requested metric comparison:\n{metrics_text}\n\n"
             f"Regression detected: {'Yes' if comparison_data['regression_detected'] else 'No'}."
         )
-
-    # Stateless: do not store chat history or session information
 
     return {
         "answer": answer,

@@ -134,28 +134,139 @@ async def get_application_endpoints(
 
 
 
-async def check_monitoring_status(db: AsyncSession, app_id: int, user_id: int) -> dict:
+async def get_application_by_id(db: AsyncSession, app_id: int, user_id: int) -> Application:
     """
-    Checks the Victoria Metrics monitoring endpoint of the application.
+    Fetches a single application by ID belonging to a specific user,
+    including its nested endpoints.
     """
-    query = select(Application).where(Application.id == app_id, Application.user_id == user_id)
+    query = (
+        select(Application)
+        .where(Application.id == app_id, Application.user_id == user_id)
+        .options(selectinload(Application.endpoints))
+    )
     result = await db.execute(query)
     app = result.scalar_one_or_none()
+    if not app:
+        raise HTTPException(
+            status_code=404,
+            detail="Application not found or does not belong to your account."
+        )
+    return app
+
+async def update_victoria_metrics_url(
+    db: AsyncSession, app_id: int, user_id: int, victoria_metrics_url: str
+) -> Application:
+    """
+    Updates the Victoria Metrics URL for an application.
+    """
+    app = await get_application_by_id(db, app_id, user_id)
+    app.victoria_metrics_url = victoria_metrics_url.strip() if victoria_metrics_url else None
+    await db.commit()
+    await db.refresh(app)
+    return app
+
+async def update_grafana_url(
+    db: AsyncSession, app_id: int, user_id: int, grafana_url: str
+) -> Application:
+    """
+    Updates the Grafana URL for an application.
+    """
+    app = await get_application_by_id(db, app_id, user_id)
+    app.grafana_url = grafana_url.strip() if grafana_url else None
+    await db.commit()
+    await db.refresh(app)
+    return app
+
+async def update_github_repo(
+    db: AsyncSession, app_id: int, user_id: int, github_repo: str
+) -> Application:
+    """
+    Updates the GitHub repository URL/name for an application.
+    """
+    app = await get_application_by_id(db, app_id, user_id)
+    app.github_repo = github_repo.strip() if github_repo else None
+    await db.commit()
+    await db.refresh(app)
+    return app
+
+async def update_health_endpoint(
+    db: AsyncSession, app_id: int, user_id: int, health_endpoint: str
+) -> Application:
+    """
+    Updates the health check endpoint URL for an application.
+    """
+    app = await get_application_by_id(db, app_id, user_id)
+    app.health_endpoint = health_endpoint.strip() if health_endpoint else None
+    await db.commit()
+    await db.refresh(app)
+    return app
+
+async def add_application_endpoint(
+    db: AsyncSession, app_id: int, user_id: int, target_name: str, container_name: str
+) -> Endpoint:
+    """
+    Adds a new monitored target endpoint for an application.
+    """
+    # Verify ownership
+    await get_application_by_id(db, app_id, user_id)
     
-    if not app or not app.victoria_metrics_url:
-        return {"status": "pending", "message": "Monitoring Pending"}
-        
-    try:
-        url = app.victoria_metrics_url
-        if not url.startswith('http://') and not url.startswith('https://'):
-            url = f"http://{url}"
-            
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            response = await client.get(url, params={"query": "1"})
-            if response.status_code == 200:
-                return {"status": "connected", "message": "Monitoring Connected"}
-    except Exception:
-        pass
-        
-    return {"status": "failed", "message": "Monitoring Failed"}
+    new_endpoint = Endpoint(
+        application_id=app_id,
+        target_name=target_name.strip(),
+        container_name=container_name.strip()
+    )
+    db.add(new_endpoint)
+    await db.commit()
+    await db.refresh(new_endpoint)
+    return new_endpoint
+
+async def update_application_endpoint(
+    db: AsyncSession, app_id: int, endpoint_id: int, user_id: int, target_name: str, container_name: str
+) -> Endpoint:
+    """
+    Updates an existing target endpoint for an application.
+    """
+    # Verify app ownership
+    await get_application_by_id(db, app_id, user_id)
+
+    query = select(Endpoint).where(
+        Endpoint.id == endpoint_id, Endpoint.application_id == app_id
+    )
+    result = await db.execute(query)
+    endpoint = result.scalar_one_or_none()
+    if not endpoint:
+        raise HTTPException(
+            status_code=404,
+            detail="Endpoint not found for this application."
+        )
+
+    endpoint.target_name = target_name.strip()
+    endpoint.container_name = container_name.strip()
+    await db.commit()
+    await db.refresh(endpoint)
+    return endpoint
+
+async def delete_application_endpoint(
+    db: AsyncSession, app_id: int, endpoint_id: int, user_id: int
+) -> None:
+    """
+    Deletes a target endpoint for an application.
+    """
+    # Verify app ownership
+    await get_application_by_id(db, app_id, user_id)
+
+    query = select(Endpoint).where(
+        Endpoint.id == endpoint_id, Endpoint.application_id == app_id
+    )
+    result = await db.execute(query)
+    endpoint = result.scalar_one_or_none()
+    if not endpoint:
+        raise HTTPException(
+            status_code=404,
+            detail="Endpoint not found for this application."
+        )
+
+    await db.delete(endpoint)
+    await db.commit()
+
 
