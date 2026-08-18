@@ -87,56 +87,70 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          printf '%s' "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Prepare server directory
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
+          CLEAN_PATH=$(printf '%s' "$DEPLOY_PATH" | tr -d '\r\n')
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "mkdir -p ${{ secrets.DEPLOY_PATH }}"
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "mkdir -p ${CLEAN_PATH}"
 
       - name: Write .env file on server
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          ENV_FILE_CONTENTS: ${{ secrets.ENV_FILE_CONTENTS }}
         run: |
-          # Write multiline secret to a temp file on the runner, then SCP it
-          # (inline echo over SSH breaks with multiline content)
-          printf '%s' "${{ secrets.ENV_FILE_CONTENTS }}" > /tmp/chamora_deploy.env
+          CLEAN_PATH=$(printf '%s' "$DEPLOY_PATH" | tr -d '\r\n')
+          printf '%s' "$ENV_FILE_CONTENTS" > /tmp/chamora_deploy.env
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             /tmp/chamora_deploy.env \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/.env
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${CLEAN_PATH}/.env"
           rm -f /tmp/chamora_deploy.env
 
       - name: Copy production compose file to server
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
+          CLEAN_PATH=$(printf '%s' "$DEPLOY_PATH" | tr -d '\r\n')
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             docker-compose-pd.yml \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/docker-compose.yml
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${CLEAN_PATH}/docker-compose.yml"
 
       - name: Pull images and restart services
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
-          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          GHCR_PAT="${{ secrets.GHCR_PAT }}"
-          REPO_OWNER="${{ github.repository_owner }}"
-
+          CLEAN_PATH=$(printf '%s' "$DEPLOY_PATH" | tr -d '\r\n')
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "
-            set -e
-            cd ${DEPLOY_PATH}
-            echo 'Logging in to GHCR...'
-            echo '${GHCR_PAT}' | docker login ghcr.io -u ${REPO_OWNER} --password-stdin
-            echo 'Pulling latest images...'
-            docker compose pull 2>/dev/null || true
-            echo 'Restarting services...'
-            docker compose up -d --remove-orphans
-            echo 'Cleaning up old images...'
-            docker image prune -f
-            echo 'Deployment complete!'
-            docker compose ps
-            "
+            "${DEPLOY_USER}@${DEPLOY_HOST}" bash << ENDSSH
+          set -e
+          cd "${CLEAN_PATH}"
+          echo "${GHCR_PAT}" | docker login ghcr.io -u "${REPO_OWNER}" --password-stdin
+          docker compose pull 2>/dev/null || true
+          docker compose up -d --remove-orphans
+          docker image prune -f
+          docker compose ps
+          ENDSSH
 
       - name: Cleanup SSH key
         if: always()
