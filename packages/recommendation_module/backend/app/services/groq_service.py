@@ -17,14 +17,27 @@ def get_groq_client():
 def generate_llm_response(system_prompt: str, user_prompt: str) -> str:
     client = get_groq_client()
 
+    print("=== SYSTEM PROMPT SENT TO GROQ ===")
+    print(system_prompt)
+    print("=== MODEL:", settings.GROQ_MODEL, "===")
+
     response = client.chat.completions.create(
         model=settings.GROQ_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        temperature=0.3,
-        max_tokens=400
+        temperature=0.4,
+        max_tokens=700,
+        reasoning_effort="medium",
     )
 
-    return response.choices[0].message.content.strip()
+    message = response.choices[0].message
+    content = (message.content or "").strip()
+
+    if not content:
+        reasoning = getattr(message, "reasoning", None)
+        if reasoning:
+            content = reasoning.strip()
+
+    return content

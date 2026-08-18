@@ -1,3 +1,5 @@
+import re
+
 from .groq_service import generate_llm_response
 from .rag_service import retrieve_relevant_chunks, format_retrieved_knowledge
 from .application_context_service import get_application_context
@@ -12,6 +14,52 @@ from .test_comparison_service import (
     get_test_cycle_comparison,
 )
 # Chat history and session storage removed for stateless chatbot
+
+
+# ---------------------------------------------------------------------------
+# Deterministic post-processing (runs locally — no extra API calls, no cost)
+# ---------------------------------------------------------------------------
+
+_UNKNOWN_LINE_PATTERN = re.compile(
+    r"(?im)^.*\b("
+    r"unknown|not identified|not specified|not provided|not detected|"
+    r"not available|no information|no schema|no explicit|not found|"
+    r"unspecified|undetermined|not documented|no data (was |is )?(found|available)"
+    r")\b.*$\n?"
+)
+
+
+def _clean_llm_answer(text: str) -> str:
+    """Deterministic, free (no API cost) safety net: strip unknown/unspecified
+    lines the model may still produce despite prompt rules. Tables and other
+    markdown structure are left intact — the frontend renders them properly."""
+    if not text:
+        return text
+    original = text
+    cleaned = _UNKNOWN_LINE_PATTERN.sub("", text)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = cleaned.strip()
+
+    # Safety net: if cleaning stripped everything, don't return an empty
+    # answer — fall back to the original text rather than showing nothing.
+    if not cleaned:
+        return original.strip()
+
+    return cleaned
+
+
+def _trim_to_complete_sentence(text: str) -> str:
+    """If the model's output was cut off by max_tokens, trim back to the
+    last fully-formed sentence/bullet so nothing reads as broken mid-word."""
+    if not text:
+        return text
+    text = text.rstrip()
+    if text.endswith((".", "!", "?", ":", ")", "`")):
+        return text
+    last_break = max(text.rfind("."), text.rfind("!"), text.rfind("?"))
+    if last_break != -1 and last_break > len(text) * 0.5:
+        return text[: last_break + 1].strip()
+    return text.strip()
 
 
 def detect_question_type(question):
@@ -65,6 +113,14 @@ def build_chatbot_context(app_id):
     return get_application_context(app_id)
 
 
+def _is_known(value) -> bool:
+    """Treat None, empty string, and case-insensitive 'unknown' as unset."""
+    if value is None:
+        return False
+    text = str(value).strip().lower()
+    return text != "" and text != "unknown"
+
+
 def build_application_system_prompt():
     return (
         "You are Chamora, an AI assistant that provides customized recommendations "
@@ -74,61 +130,80 @@ def build_application_system_prompt():
         "(such as 'What is AI?', 'What is ML?', or any topic not in the application context), "
         "respond ONLY with: 'Chamora aims to provide customized answers for application related questions'. "
         "Be practical, clear, and specific. "
-        "Use clean markdown with short bullet points when useful."
+        "STRICT RULES: "
+        "1) Only mention facts explicitly given to you below — never guess, infer, or speculate about anything not stated. "
+        "2) Never use the words 'unknown', 'not specified', 'not provided', or similar — if something wasn't given to you, do not bring it up at all. "
+        "3) Structure your answer with markdown: use a short heading, 4-6 detailed bullet points or a comparison table where relevant, and enough explanation that each point is genuinely useful — not just a one-line label. "
+        "4) Do not artificially shorten your answer. Use the space you need to be genuinely helpful, while staying strictly grounded in the facts given."
     )
 
 
 def build_application_user_prompt(context, question, retrieved_knowledge):
     containers = context["containers"]
-    primary_container = containers[0]["name"] if containers else "unknown-container"
-    primary_image = containers[0]["image"] if containers else "unknown-image"
+    primary_container = containers[0]["name"] if containers else None
+    primary_image = containers[0]["image"] if containers else None
 
-    evidence = ", ".join(context["tech_stack"].get("evidence", [])) or "Unknown"
+    tech_stack = context["tech_stack"]
+    evidence_list = tech_stack.get("evidence", [])
+    evidence = ", ".join(evidence_list) if evidence_list else None
+
     safe_retrieved_knowledge = retrieved_knowledge[:1800]
 
-    return f"""
-Application Context
-- Name: {context["app_name"]}
-- ID: {context["app_id"]}
-- Domain: {context["domain"]}
-- Environment: {context["environment"]}
-- User: {context["user_name"]} ({context["user_id"]})
-- Repo URL: {context["repo_url"]}
+    app_lines = [f"- Name: {context['app_name']}", f"- ID: {context['app_id']}"]
+    if _is_known(context.get("domain")):
+        app_lines.append(f"- Domain: {context['domain']}")
+    if _is_known(context.get("environment")):
+        app_lines.append(f"- Environment: {context['environment']}")
+    app_lines.append(f"- User: {context['user_name']} ({context['user_id']})")
+    if _is_known(context.get("repo_url")):
+        app_lines.append(f"- Repo URL: {context['repo_url']}")
 
-Technology Stack
-- Frontend: {context["tech_stack"]["frontend"]}
-- Backend: {context["tech_stack"]["backend"]}
-- Database: {context["tech_stack"]["database"]}
-- Evidence: {evidence}
+    tech_lines = []
+    if _is_known(tech_stack.get("frontend")):
+        tech_lines.append(f"- Frontend: {tech_stack['frontend']}")
+    if _is_known(tech_stack.get("backend")):
+        tech_lines.append(f"- Backend: {tech_stack['backend']}")
+    if _is_known(tech_stack.get("database")):
+        tech_lines.append(f"- Database: {tech_stack['database']}")
+    if _is_known(evidence):
+        tech_lines.append(f"- Evidence: {evidence}")
+    tech_block = "\n".join(tech_lines) if tech_lines else None
 
-Runtime Metrics
-- CPU Usage: {context["metrics"]["cpu_percent"]}%
-- Memory Usage: {context["metrics"]["memory_percent"]}%
-- Memory Used: {context["metrics"]["memory_used"]}
-- Memory Total: {context["metrics"]["memory_total"]}
-- Metrics Source: {context["metrics"]["source"]}
+    container_lines = []
+    if _is_known(primary_container):
+        container_lines.append(f"- Primary Container: {primary_container}")
+    if _is_known(primary_image):
+        container_lines.append(f"- Image: {primary_image}")
+    container_block = "\n".join(container_lines) if container_lines else None
 
-Container
-- Primary Container: {primary_container}
-- Image: {primary_image}
+    sections = [f"Application Context\n" + "\n".join(app_lines)]
+    if tech_block:
+        sections.append(f"Technology Stack\n{tech_block}")
+    sections.append(
+        "Runtime Metrics\n"
+        f"- CPU Usage: {context['metrics']['cpu_percent']}%\n"
+        f"- Memory Usage: {context['metrics']['memory_percent']}%\n"
+        f"- Memory Used: {context['metrics']['memory_used']}\n"
+        f"- Memory Total: {context['metrics']['memory_total']}"
+    )
+    if container_block:
+        sections.append(f"Container\n{container_block}")
+    sections.append(f"Current Mode\n- {context['mode']}")
+    if safe_retrieved_knowledge and safe_retrieved_knowledge.strip():
+        sections.append(f"Retrieved Knowledge Base Content\n{safe_retrieved_knowledge}")
+    sections.append(f"User Question\n{question}")
+    sections.append(
+        "Instructions\n"
+        "- Only state facts explicitly listed above. Do not guess, infer, or mention anything not given.\n"
+        "- Do not say a field is unknown, unspecified, or not provided — if it's missing above, skip it entirely, silently.\n"
+        "- Use markdown formatting freely — headings, tables, and bullets are all welcome where they help clarity.\n"
+        "- Be complete and helpful, but avoid unnecessary repetition or filler.\n"
+        "FINAL REMINDER: Do not speculate about what the application does, its typical use cases, "
+        "or its likely architecture. Only repeat facts given above. If unsure whether to include "
+        "something, leave it out."
+    )
 
-Current Mode
-- {context["mode"]}
-
-Retrieved Knowledge Base Content
-{safe_retrieved_knowledge}
-
-User Question
-{question}
-
-Instructions
-- Answer specifically for this application.
-- Use the retrieved knowledge when relevant.
-- Do not answer like a general chatbot.
-- If data is unknown, say it clearly.
-- Use neat markdown.
-- Keep the answer concise and focused.
-""".strip()
+    return "\n\n".join(sections).strip()
 
 
 def build_anomaly_system_prompt():
@@ -136,7 +211,11 @@ def build_anomaly_system_prompt():
         "You are Chamora in diagnostic mode. "
         "Explain anomalies using the provided application context and anomaly records. "
         "Focus on what happened, likely cause, impact, and actionable next steps. "
-        "Use neat markdown."
+        "STRICT RULES: "
+        "1) Only mention facts explicitly given to you below — never guess or speculate. "
+        "2) Never use the words 'unknown', 'not specified', 'not provided', or similar — if missing, skip it silently. "
+        "3) Structure your answer with markdown: use a short heading, 4-6 detailed bullet points or a comparison table where relevant, and enough explanation that each point is genuinely useful — not just a one-line label. "
+        "4) Do not artificially shorten your answer. Use the space you need to be genuinely helpful, while staying strictly grounded in the facts given."
     )
 
 
@@ -176,13 +255,16 @@ def build_anomaly_user_prompt(
             )
         anomaly_text = "\n\n".join(parts)
 
+    app_lines = [f"- Name: {context['app_name']}", f"- ID: {context['app_id']}"]
+    if _is_known(context.get("domain")):
+        app_lines.append(f"- Domain: {context['domain']}")
+    if _is_known(context.get("environment")):
+        app_lines.append(f"- Environment: {context['environment']}")
+    app_lines.append("- Current Mode: diagnostic")
+
     return f"""
 Application Context
-- Name: {context["app_name"]}
-- ID: {context["app_id"]}
-- Domain: {context["domain"]}
-- Environment: {context["environment"]}
-- Current Mode: diagnostic
+{chr(10).join(app_lines)}
 
 Anomaly Records
 - Total anomalies recorded for this application (all time): {total} ({severity_summary})
@@ -196,11 +278,13 @@ User Question
 Instructions
 - The "Total anomalies recorded" figure above is authoritative for any count/total question — never infer a count from how many records are listed in detail.
 - Explain what happened clearly, using the detailed records as illustrative examples only.
+- Only state facts explicitly given above — do not guess or speculate.
+- Do not say a field is unknown, unspecified, or not provided — if missing, skip it silently.
+- Use markdown formatting freely — headings, tables, and bullets are all welcome where they help clarity.
 - Mention the requested time window if relevant.
 - Interpret severity, score, root cause, and evidence.
 - Give actionable recommendations.
-- Stay specific to this application.
-- Keep the answer concise and focused.
+- Be complete and helpful, but avoid unnecessary repetition or filler.
 """.strip()
 
 
@@ -208,7 +292,11 @@ def build_test_comparison_system_prompt():
     return (
         "You are Chamora, an AI assistant for application-specific test analysis. "
         "Use the supplied comparison data to explain the differences clearly and practically. "
-        "Use neat markdown."
+        "STRICT RULES: "
+        "1) Only mention facts explicitly given to you below — never guess or speculate. "
+        "2) Never use the words 'unknown', 'not specified', 'not provided', or similar — if missing, skip it silently. "
+        "3) Use clean markdown formatting — a comparison table is often the clearest way to present metric differences. "
+        "4) Be thorough but efficient — give a complete, well-organized answer, not padding."
     )
 
 
@@ -226,12 +314,15 @@ def build_test_comparison_user_prompt(context, comparison_data, metrics, questio
 
     selected_text = "\n".join(selected_metrics) or "- No requested metrics found in comparison data"
 
+    app_lines = [f"- Name: {context['app_name']}", f"- ID: {context['app_id']}"]
+    if _is_known(context.get("domain")):
+        app_lines.append(f"- Domain: {context['domain']}")
+    if _is_known(context.get("environment")):
+        app_lines.append(f"- Environment: {context['environment']}")
+
     return f"""
 Application Context
-- Name: {context["app_name"]}
-- ID: {context["app_id"]}
-- Domain: {context["domain"]}
-- Environment: {context["environment"]}
+{chr(10).join(app_lines)}
 
 Comparison Summary
 - {comparison_data.get("summary", "No summary available")}
@@ -244,10 +335,11 @@ User Question
 {question}
 
 Instructions
-- Explain the comparison clearly.
+- Explain the comparison clearly. A markdown table (metric | baseline | target | % change) is a good way to present this.
 - Mention regressions or improvements.
-- Keep the answer focused on the selected application.
-- Use neat markdown.
+- Only state facts explicitly given above — do not guess or speculate.
+- Do not say a field is unknown, unspecified, or not provided — if missing, skip it silently.
+- Be complete and helpful, but avoid unnecessary repetition or filler.
 """.strip()
 
 
@@ -262,21 +354,50 @@ def handle_application_question(app_id, question, user_id=None):
 
     try:
         answer = generate_llm_response(system_prompt, user_prompt)
-    except Exception:
-        answer = (
-            f"{context['app_name']} is a {context['domain']} application running in the "
-            f"{context['environment']} environment. It currently appears to use "
-            f"{context['tech_stack']['frontend']} on the frontend and "
-            f"{context['tech_stack']['backend']} on the backend. "
-            f"The current CPU usage is {context['metrics']['cpu_percent']}% and memory usage is "
-            f"{context['metrics']['memory_percent']}%."
+        print("=== RAW LLM OUTPUT ===")
+        print(repr(answer))
+        print("=== RAW LENGTH:", len(answer) if answer else 0, "===")
+
+        answer = _clean_llm_answer(answer)
+        print("=== AFTER CLEAN ===")
+        print(repr(answer))
+        print("=== AFTER CLEAN LENGTH:", len(answer) if answer else 0, "===")
+
+        answer = _trim_to_complete_sentence(answer)
+        print("=== AFTER TRIM ===")
+        print(repr(answer))
+        print("=== AFTER TRIM LENGTH:", len(answer) if answer else 0, "===")
+    except Exception as e:
+        print("=== LLM CALL FAILED:", repr(e), "===")
+        answer = ""
+
+    if not answer or not answer.strip():
+        print("=== FALLING BACK TO DETERMINISTIC ANSWER ===")
+        answer_parts = [f"{context['app_name']}"]
+        if _is_known(context.get("domain")):
+            answer_parts.append(f"is a {context['domain']} application")
+        if _is_known(context.get("environment")):
+            answer_parts.append(f"running in the {context['environment']} environment")
+        base = " ".join(answer_parts) + "."
+
+        tech_bits = []
+        if _is_known(context["tech_stack"].get("frontend")):
+            tech_bits.append(f"{context['tech_stack']['frontend']} on the frontend")
+        if _is_known(context["tech_stack"].get("backend")):
+            tech_bits.append(f"{context['tech_stack']['backend']} on the backend")
+        tech_sentence = f" It currently appears to use {' and '.join(tech_bits)}." if tech_bits else ""
+
+        metrics_sentence = (
+            f" Current CPU usage is {context['metrics']['cpu_percent']}% and memory "
+            f"usage is {context['metrics']['memory_percent']}%."
         )
+
+        answer = base + tech_sentence + metrics_sentence
 
     return {
         "answer": answer,
         "mode": context["mode"],
     }
-
 
 def handle_anomaly_question(app_id, question, user_id=None):
     context = build_chatbot_context(app_id)
@@ -311,7 +432,22 @@ def handle_anomaly_question(app_id, question, user_id=None):
 
     system_prompt = build_anomaly_system_prompt()
     user_prompt = build_anomaly_user_prompt(context, anomaly_records, question, counts)
-    answer = generate_llm_response(system_prompt, user_prompt)
+
+    try:
+        answer = generate_llm_response(system_prompt, user_prompt)
+        answer = _clean_llm_answer(answer)
+        answer = _trim_to_complete_sentence(answer)
+    except Exception:
+        answer = ""
+
+    if not answer or not answer.strip():
+        breakdown = ", ".join(
+            f"{v} {k.lower()}" for k, v in counts.items() if k != "total"
+        )
+        answer = (
+            f"There have been **{counts.get('total', 0)}** anomalies recorded for this "
+            f"application so far ({breakdown}). Please try rephrasing your question for more detail."
+        )
 
     return {
         "answer": answer,
@@ -342,7 +478,12 @@ def handle_test_comparison_question(app_id, question, user_id=None):
 
     try:
         answer = generate_llm_response(system_prompt, user_prompt)
+        answer = _clean_llm_answer(answer)
+        answer = _trim_to_complete_sentence(answer)
     except Exception:
+        answer = ""
+
+    if not answer or not answer.strip():
         selected_metrics = []
         for metric in metrics:
             if metric in comparison_data["metrics"]:
