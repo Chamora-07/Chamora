@@ -137,15 +137,13 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          GHCR_PAT: ${{ secrets.GHCR_PAT }}
-          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           CLEAN_PATH=$(printf '%s' "$DEPLOY_PATH" | tr -d '\r\n')
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             "${DEPLOY_USER}@${DEPLOY_HOST}" bash << ENDSSH
           set -e
           cd "${CLEAN_PATH}"
-          echo "${GHCR_PAT}" | docker login ghcr.io -u "${REPO_OWNER}" --password-stdin
+          echo "Pulling public images from GHCR (no auth needed)..."
           docker compose pull 2>/dev/null || true
           docker compose up -d --remove-orphans
           docker image prune -f
