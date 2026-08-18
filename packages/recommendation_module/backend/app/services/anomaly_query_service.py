@@ -68,7 +68,17 @@ def get_latest_anomaly_for_app(app_id: str) -> dict:
     }
 
 
-def get_anomalies_by_time_window(app_id: str, question: str) -> list[dict]:
+def get_anomalies_by_time_window(app_id: str, question: str, limit: int = 50) -> list[dict]:
+    """Returns a bounded set of anomaly records for use as illustrative examples
+    in an LLM prompt (chatbot_service trims this further to [:3]).
+
+    IMPORTANT: this is never a source of truth for totals. When no time phrase
+    is recognized in the question, this deliberately falls back to the most
+    recent `limit` records rather than silently fetching the entire table —
+    an unbounded select() here previously inherited Supabase/PostgREST's
+    implicit 1000-row cap and got misreported as "the total."
+    For real totals, use get_anomaly_counts_for_app instead.
+    """
     supabase = get_supabase_client()
     start_time, end_time = parse_time_window_from_question(question)
 
@@ -76,7 +86,8 @@ def get_anomalies_by_time_window(app_id: str, question: str) -> list[dict]:
         supabase.table("anomalies")
         .select("*")
         .eq("application_id", app_id)
-        .order("window_timestamp", desc=False)
+        .order("window_timestamp", desc=True)  # most recent first — matters now that we cap
+        .limit(limit)                          # explicit cap, never implicit
     )
 
     if start_time and end_time:
@@ -102,3 +113,25 @@ def get_anomalies_by_time_window(app_id: str, question: str) -> list[dict]:
         )
 
     return formatted
+
+
+def get_anomaly_counts_for_app(app_id) -> dict:
+    """Real DB aggregate — safe to use for any 'how many/total' answer.
+    head=True means PostgREST returns only a count, no rows, so this is
+    never subject to the 1000-row page cap regardless of table size.
+    """
+    counts: dict[str, int] = {}
+    supabase = get_supabase_client()
+
+    for severity in ("CRITICAL", "WARNING"):
+        result = (
+            supabase.table("anomalies")
+            .select("id", count="exact", head=True)
+            .eq("application_id", app_id)  # FIX: was "app_id" — not a real column, matches nothing
+            .eq("severity", severity)
+            .execute()
+        )
+        counts[severity] = result.count or 0
+
+    counts["total"] = sum(counts.values())
+    return counts

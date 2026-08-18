@@ -10,6 +10,7 @@ class ApplicationMetadata(BaseModel):
     user_id: str
     user_name: str
     repo_url: str
+    description: Optional[str] = ""
 
 
 class MetricsData(BaseModel):
@@ -36,17 +37,18 @@ class TechStackData(BaseModel):
     evidence: List[str] = []
 
 
-class AnomalyFlag(BaseModel):
-    type: str
-    value: float
-    threshold: float
-    message: str
-
-
 class AnomalyData(BaseModel):
-    available: bool
-    status: str
-    flags: List[AnomalyFlag] = []
+    id: Optional[str] = None
+    application_id: Optional[str] = None
+    anomaly_detected: bool = False
+    mode: str = "advisory"
+    severity: Optional[str] = None
+    summary: Optional[str] = None
+    window_timestamp: Optional[str] = None
+    score: Optional[float] = None
+    root_cause: Optional[str] = None
+    evidence: List[str] = []
+    created_at: Optional[str] = None
 
 
 class DashboardResponse(BaseModel):
