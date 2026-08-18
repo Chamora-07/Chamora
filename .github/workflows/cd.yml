@@ -1,0 +1,133 @@
+name: Backend CD
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: cd-backend-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/chamora
+
+jobs:
+  # ──────────────────────────────────────────────
+  # 1. Build & Push Docker Images to GHCR
+  # ──────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            dockerfile: Dockerfile
+          - service: metrics-retriever
+            dockerfile: packages/metrics_retriever/Dockerfile
+          - service: feature-builder
+            dockerfile: packages/feature_builder/Dockerfile
+          - service: rule-engine
+            dockerfile: packages/rule_engine/Dockerfile
+          - service: recommendation-module
+            dockerfile: packages/recommendation_module/backend/Dockerfile
+          - service: rca-engine
+            dockerfile: packages/rca_engine/Dockerfile
+          - service: test-cycle-comparison
+            dockerfile: packages/test_cycle_comparison/Dockerfile
+          - service: k6-worker
+            dockerfile: packages/k6_worker/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # ──────────────────────────────────────────────
+  # 2. Deploy to VPS via SSH
+  # ──────────────────────────────────────────────
+  deploy:
+    name: Deploy to VPS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Write .env file on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "echo '${{ secrets.ENV_FILE_CONTENTS }}' > ${{ secrets.DEPLOY_PATH }}/.env"
+
+      - name: Copy production compose file to server
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            docker-compose-pd.yml \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/docker-compose.yml
+
+      - name: Pull images and restart services
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'DEPLOY_SCRIPT'
+          set -e
+          cd ${{ secrets.DEPLOY_PATH }}
+
+          echo "Logging in to GHCR..."
+          echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+
+          echo "📥 Pulling latest images..."
+          docker compose pull --ignore-buildable 2>/dev/null || true
+
+          echo "🚀 Restarting services..."
+          docker compose up -d --remove-orphans
+
+          echo "🧹 Cleaning up old images..."
+          docker image prune -f
+
+          echo "✅ Deployment complete!"
+          docker compose ps
+          DEPLOY_SCRIPT
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
