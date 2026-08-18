@@ -10,7 +10,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/chamora
+  IMAGE_PREFIX: ghcr.io/chamora-07/chamora
 
 jobs:
   # ──────────────────────────────────────────────
