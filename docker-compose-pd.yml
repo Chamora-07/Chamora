@@ -60,7 +60,7 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
 
   metrics_retriever:
-    image: ghcr.io/M-Thanu/chamora/metrics-retriever:latest
+    image: ghcr.io/chamora-07/chamora/metrics-retriever:latest
     container_name: metrics_retriever
     depends_on:
       - kafka
@@ -75,7 +75,7 @@ services:
     restart: always
 
   backend:
-    image: ghcr.io/M-Thanu/chamora/backend:latest
+    image: ghcr.io/chamora-07/chamora/backend:latest
     container_name: chamora_backend
     ports:
       - "8000:8000"
@@ -91,7 +91,7 @@ services:
     restart: unless-stopped
 
   feature_builder:
-    image: ghcr.io/M-Thanu/chamora/feature-builder:latest
+    image: ghcr.io/chamora-07/chamora/feature-builder:latest
     container_name: feature_builder
     depends_on:
       - kafka
@@ -108,7 +108,7 @@ services:
     restart: always
 
   rule_engine:
-    image: ghcr.io/M-Thanu/chamora/rule-engine:latest
+    image: ghcr.io/chamora-07/chamora/rule-engine:latest
     container_name: rule_engine
     depends_on:
       - kafka
@@ -126,7 +126,7 @@ services:
     restart: always
 
   recommendation-module:
-    image: ghcr.io/M-Thanu/chamora/recommendation-module:latest
+    image: ghcr.io/chamora-07/chamora/recommendation-module:latest
     container_name: recommendation-module
     ports:
       - "8010:8000"
@@ -137,7 +137,7 @@ services:
     restart: unless-stopped
 
   test_cycle_comparison:
-    image: ghcr.io/M-Thanu/chamora/test-cycle-comparison:latest
+    image: ghcr.io/chamora-07/chamora/test-cycle-comparison:latest
     container_name: test_cycle_comparison
     ports:
       - "8030:8000"
@@ -148,7 +148,7 @@ services:
     restart: unless-stopped
 
   rca_engine:
-    image: ghcr.io/M-Thanu/chamora/rca-engine:latest
+    image: ghcr.io/chamora-07/chamora/rca-engine:latest
     container_name: rca_engine
     ports:
       - "8020:8000"
@@ -161,7 +161,7 @@ services:
     restart: unless-stopped
 
   k6_worker:
-    image: ghcr.io/M-Thanu/chamora/k6-worker:latest
+    image: ghcr.io/chamora-07/chamora/k6-worker:latest
     container_name: k6_worker
     depends_on:
       kafka:
