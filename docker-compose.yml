@@ -80,6 +80,9 @@ services:
     dns:
       - 8.8.8.8
       - 8.8.4.4  
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "aws-1-ap-northeast-1.pooler.supabase.com:57.182.231.186"
     env_file: .env
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -135,18 +138,20 @@ services:
   recommendation-module:
     build:
       context: .
-      dockerfile: packages/recommendation-module/backend/Dockerfile
+      dockerfile: packages/recommendation_module/backend/Dockerfile
     container_name: recommendation-module
     ports:
       - "8010:8000"
     env_file:
-      - ./packages/recommendation-module/backend/.env
+      - ./packages/recommendation_module/backend/.env
       - ./.env
     dns:
       - 8.8.8.8
       - 8.8.4.4
     networks:
       - anomaly_detection
+    volumes:
+      - ./packages/recommendation_module/backend:/app
     restart: unless-stopped
 
   test_cycle_comparison:
@@ -155,7 +160,7 @@ services:
       dockerfile: packages/test_cycle_comparison/Dockerfile
     container_name: test_cycle_comparison
     ports:
-      - "8020:8000"
+      - "8030:8000"
     env_file:
       - ./.env
     dns:
@@ -167,6 +172,21 @@ services:
       - ./packages/test_cycle_comparison:/app
     restart: unless-stopped
 
+  rca_engine:
+    build:
+      context: .
+      dockerfile: packages/rca_engine/Dockerfile
+    container_name: rca_engine
+    ports:
+      - "8020:8000"
+    env_file: .env
+    environment:
+      - CORS_ORIGINS=["*"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - anomaly_detection
+    restart: unless-stopped
   k6_worker:
     build:
       context: .

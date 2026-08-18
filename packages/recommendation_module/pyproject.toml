@@ -1,0 +1,23 @@
+[project]
+name = "recommendation-module"
+version = "0.1.0"
+description = "Chamora recommendation and chatbot service"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "requests",
+    "docker",
+    "python-dotenv",
+    "pydantic",
+    "groq",
+    "supabase",
+    "fastembed",
+    "chromadb",
+    "pypdf"
+]
+
+[tool.uvicorn]
+host = "0.0.0.0"
+port = 8000
+reload = true

@@ -13,6 +13,8 @@ from metrics_retriever.router import router as retriever_router
 from metrics_retriever.router import manager as retriever_manager
 
 from api.v1.api_router import v1_router
+from db.init_db import ensure_ml_inference_need_column
+from db.connection import warm_pool
 
 
 logging.basicConfig(
@@ -20,12 +22,18 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 logger = logging.getLogger("CHAMORA")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- STARTUP PHASE ---
     logger.info("Initializing Chamora...")
+    await ensure_ml_inference_need_column()
+    # Pre-warm the DB connection pool so first login is fast
+    await warm_pool()
+    logger.info("DB connection pool warmed.")
     # Start the Metrics Retriever component
     await retriever_manager.start()
     logger.info("Retriever Manager is active and monitoring.")

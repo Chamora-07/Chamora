@@ -1,5 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 from db.models import User
 from services.auth.schemas import Token, UserLogin, UserResponse, UserSignUp
 from services.auth.utils import hash_password, verify_password, create_access_token
@@ -35,7 +36,16 @@ async def authenticate_user(db: AsyncSession, login_data: UserLogin) -> Token:
     result = await db.execute(query)
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(login_data.password, user.hashed_password):
+    if not user:
+        raise Exception("Invalid email or password")
+
+    # Run blocking bcrypt check in thread pool to avoid blocking the event loop
+    loop = asyncio.get_event_loop()
+    is_valid = await loop.run_in_executor(
+        None, verify_password, login_data.password, user.hashed_password
+    )
+
+    if not is_valid:
         raise Exception("Invalid email or password")
 
     access_token = create_access_token(data={

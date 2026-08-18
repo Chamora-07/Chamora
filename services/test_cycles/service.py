@@ -160,7 +160,7 @@ async def _upload_result(file: UploadFile, cycle: TestRun) -> str:
     if script is None:
         raise HTTPException(500, "Cycle is missing its parent test script.")
 
-    safe_name = (file.filename or "result").replace("/", "_")
+    safe_name = (file.filename or "result").split("/")[-1].split("\\")[-1]
     bucket_path = f"apps/{script.application_id}/cycles/{cycle.id}/{safe_name}"
     file_bytes = await file.read()
 

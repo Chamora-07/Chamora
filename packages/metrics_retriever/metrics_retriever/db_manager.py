@@ -21,7 +21,10 @@ class RetrieverDBManager:
                 "prepared_statement_cache_size": 0,
                 "statement_cache_size": 0
             },
-            pool_pre_ping=True
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=3,
+            pool_recycle=1800,
         )
         
         self.AsyncSessionLocal = sessionmaker(

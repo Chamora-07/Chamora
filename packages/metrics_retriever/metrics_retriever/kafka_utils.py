@@ -57,6 +57,10 @@ class KafkaManager:
         except Exception as e:
             logger.error(f"Kafka Produce Error: {e}")
 
+    async def produce_async(self, key: str, data: dict):
+        """Async-safe wrapper. produce() is non-blocking (just enqueues), so no thread needed."""
+        self.produce(key, data)
+
     def flush(self):
         """Used during shutdown to ensure all messages hit the broker."""
         logger.info("Flushing Kafka producer...")

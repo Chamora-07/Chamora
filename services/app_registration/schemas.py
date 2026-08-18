@@ -19,7 +19,24 @@ class ApplicationCreate(BaseModel):
     github_repo: Optional[str] = None
     grafana_url: Optional[str] = None
     victoria_metrics_url: Optional[str] = None
+    health_endpoint: Optional[str] = None
     endpoints: List[EndpointCreate] = []
+
+class EndpointUpdate(BaseModel):
+    target_name: str
+    container_name: str
+
+class VictoriaMetricsUpdate(BaseModel):
+    victoria_metrics_url: str
+
+class GrafanaUpdate(BaseModel):
+    grafana_url: str
+
+class GithubRepoUpdate(BaseModel):
+    github_repo: str
+
+class HealthEndpointUpdate(BaseModel):
+    health_endpoint: str
 
 class ApplicationResponse(BaseModel):
     id: int
@@ -28,6 +45,7 @@ class ApplicationResponse(BaseModel):
     github_repo: Optional[str]
     grafana_url: Optional[str]
     victoria_metrics_url: Optional[str]
+    health_endpoint: Optional[str] = None
     endpoints: List[EndpointResponse] = []
     
     model_config = ConfigDict(from_attributes=True)

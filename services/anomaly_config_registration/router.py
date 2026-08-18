@@ -12,6 +12,7 @@ from .schemas import (
     AnomalyConfigUpdate,
     AnomalyConfigResponse,
     AnomalyConfigSummaryResponse,
+    MLModelMetricResponse,
 )
 from . import service
 
@@ -55,6 +56,15 @@ async def get_config(
     return await service.get_config_by_endpoint(db, endpoint_id, current_user.id)
 
 
+@router.get("/{config_id}/models", response_model=List[MLModelMetricResponse])
+async def get_config_models(
+    config_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return await service.get_model_metrics_for_config(db, config_id, current_user.id)
+
+
 @router.patch("/endpoint/{endpoint_id}", response_model=AnomalyConfigResponse)
 async def update_config(
     endpoint_id: int,
@@ -75,3 +85,15 @@ async def delete_config(
 ):
     await service.delete_config(db, endpoint_id, current_user.id)
     await retriever_manager.refresh_jobs()   # ← stops scraping immediately
+
+
+@router.post("/{config_id}/ml-need/toggle", response_model=AnomalyConfigResponse)
+async def toggle_ml_inference_need(
+    config_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    config = await service.toggle_ml_inference_need(db, config_id, current_user.id)
+    # notify retriever manager in case scraping behaviour should change
+    await retriever_manager.refresh_jobs()
+    return config

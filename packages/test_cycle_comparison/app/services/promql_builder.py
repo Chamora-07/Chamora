@@ -74,7 +74,9 @@ def _wrap_aggregation(
         return f"sum_over_time({name}{selector}[{window}])"
     if aggregation == "rate_avg":
         # Counters: short-window rate, then average across the cycle
-        return f"avg_over_time(rate({name}{selector}[1m])[{window}:1m])"
+        sec = int(window.rstrip("s")) if window.endswith("s") and window.rstrip("s").isdigit() else 60
+        step = "1s" if sec < 60 else "1m"
+        return f"avg_over_time(rate({name}{selector}[1m])[{window}:{step}])"
     if aggregation == "last":
         return f"{name}{selector}"
     if aggregation == "delta":

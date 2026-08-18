@@ -1,26 +1,14 @@
 import os
 import asyncio
 import shutil
-from datetime import datetime
-from supabase import create_client, Client
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from .db import update_test_run
 
 load_dotenv()
 
-K6_SCRIPTS_BUCKET = "test_scripts"
-K6_RESULTS_BUCKET = "k6_results"
-SUPABASE_KEY_ = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6d3ZtcnJyaHNqem1mZXlranNiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTkxMTAzNSwiZXhwIjoyMDkxNDg3MDM1fQ.Rpn86YcgsKN7P0pTw3yfPvhyaEa4ydaJjMo2eANIJAk"
-
-def get_supabase() -> Client:
-    url = os.getenv("SUPABASE_URL")
-    key = SUPABASE_KEY_
-    if not url or not key:
-        raise RuntimeError(
-            f"SUPABASE_URL={'set' if url else 'MISSING'}, "
-            f"SUPABASE_KEY_={'set' if key else 'MISSING'}"
-        )
-    return create_client(url, key)
+# Import shared Supabase singleton — uses env vars, no hardcoded keys
+from db.supabase_client import get_supabase, BUCKET_TEST_SCRIPTS, BUCKET_K6_RESULTS
 
 
 async def execute_k6_run(
@@ -44,20 +32,20 @@ async def execute_k6_run(
         await update_test_run(
             test_run_id,
             status="running",
-            start_time=datetime.utcnow()
+            start_time=datetime.now(timezone.utc)
         )
         print(f"[Run {test_run_id}] Status → running")
 
         # Step 2 — Download script
         print(f"[Run {test_run_id}] Downloading from "
-              f"bucket='{K6_SCRIPTS_BUCKET}' path='{storage_path}'")
+              f"bucket='{BUCKET_TEST_SCRIPTS}' path='{storage_path}'")
         client = get_supabase()
 
         try:
-            data = client.storage.from_(K6_SCRIPTS_BUCKET).download(storage_path)
+            data = client.storage.from_(BUCKET_TEST_SCRIPTS).download(storage_path)
         except Exception as e:
             raise RuntimeError(
-                f"Download failed — bucket='{K6_SCRIPTS_BUCKET}' "
+                f"Download failed — bucket='{BUCKET_TEST_SCRIPTS}' "
                 f"path='{storage_path}' error={e}"
             )
 
@@ -107,7 +95,7 @@ async def execute_k6_run(
         print(f"[Run {test_run_id}] Uploading result → {remote_result_path}")
         with open(local_result, "rb") as f:
             try:
-                client.storage.from_(K6_RESULTS_BUCKET).upload(
+                client.storage.from_(BUCKET_K6_RESULTS).upload(
                     path=remote_result_path,
                     file=f.read(),
                     file_options={"content-type": "application/json"}
@@ -119,7 +107,7 @@ async def execute_k6_run(
         await update_test_run(
             test_run_id,
             status="completed",
-            end_time=datetime.utcnow(),
+            end_time=datetime.now(timezone.utc),
             result_file_path=remote_result_path
         )
         print(f"[Run {test_run_id}] Status → completed")
@@ -130,11 +118,11 @@ async def execute_k6_run(
             await update_test_run(
                 test_run_id,
                 status="failed",
-                end_time=datetime.utcnow()
+                end_time=datetime.now(timezone.utc)
             )
         except Exception as db_err:
             print(f"[Run {test_run_id}] DB update also failed: {db_err}")
 
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
-        print(f"[Run {test_run_id}] Cleaned up {run_dir}")
+        print(f"[Run {test_run_id}] Cleaned up {run_dir}")

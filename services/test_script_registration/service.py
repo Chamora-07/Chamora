@@ -1,17 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import UploadFile, HTTPException
 from db.models import TestScript
-import os
-from supabase import create_client, Client
-from dotenv import load_dotenv
-
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")                                          # ← matches your .env
-SUPABASE_BUCKET = os.getenv("SUPABASE_STORAGE_TEST_SCRIPTS_BUCKET", "test_scripts")  # ← matches your .env
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+from db.supabase_client import get_supabase, BUCKET_TEST_SCRIPTS
 
 async def upload_to_bucket(file: UploadFile, app_id: int) -> str:
     bucket_path = f"apps/{app_id}/scripts/{file.filename}"
@@ -19,7 +9,7 @@ async def upload_to_bucket(file: UploadFile, app_id: int) -> str:
     file_bytes = await file.read()
     
     try:
-        supabase.storage.from_(SUPABASE_BUCKET).upload(
+        get_supabase().storage.from_(BUCKET_TEST_SCRIPTS).upload(
             path=bucket_path,
             file=file_bytes,
             file_options={"content-type": file.content_type or "application/octet-stream"}

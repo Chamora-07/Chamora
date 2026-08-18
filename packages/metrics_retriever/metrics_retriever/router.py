@@ -37,16 +37,18 @@ class RetrieverManager:
             await asyncio.sleep(60)
 
     async def _heartbeat_loop(self):
-        """The actual scraping heartbeat — runs every 1 second."""
+        """The actual scraping heartbeat — runs every 5 seconds."""
         while self.is_running:
             start_time = asyncio.get_event_loop().time()
             try:
                 if self.active_jobs:
                     await self.scraper.run_scrape_batch(self.active_jobs)
+                    # Yield control back to the event loop so Uvicorn can serve requests
+                    await asyncio.sleep(0)
             except Exception as e:
                 logger.error(f"Scrape cycle error: {e}")
             elapsed = asyncio.get_event_loop().time() - start_time
-            await asyncio.sleep(max(0, 1.0 - elapsed))
+            await asyncio.sleep(max(1.0, 5.0 - elapsed))
 
     async def refresh_jobs(self):
         """

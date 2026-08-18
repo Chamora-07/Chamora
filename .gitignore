@@ -3,9 +3,21 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+
+# Environment files
 .env
+*.env
+.env.*
+!.env.example
+
+# Virtual environment
+.venv/
 venv/
+ENV/
 env/
+
+# Build artifacts
 dist/
 build/
 *.egg-info/
+*.gguf

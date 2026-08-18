@@ -10,13 +10,13 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 KAFKA_TOPIC             = "load_test_jobs"
 
 
-def _get_producer() -> Producer:
-    return Producer({
-        "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
-        "acks":              "all",
-        "retries":           3,
-        "retry.backoff.ms":  500,
-    })
+# Module-level singleton — reused across all publish calls
+_producer = Producer({
+    "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
+    "acks":              "all",
+    "retries":           3,
+    "retry.backoff.ms":  500,
+})
 
 
 async def publish_load_test_job(
@@ -35,19 +35,17 @@ async def publish_load_test_job(
     }
 
     def _send():
-        producer = _get_producer()
-
         def delivery_callback(err, msg):
             if err:
                 raise KafkaException(f"Delivery failed: {err}")
             print(f"[Producer] Job {test_run_id} delivered to "
                   f"partition {msg.partition()} offset {msg.offset()}")
 
-        producer.produce(
+        _producer.produce(
             topic=KAFKA_TOPIC,
             value=json.dumps(payload).encode("utf-8"),
             callback=delivery_callback
         )
-        producer.flush()
+        _producer.flush()
 
     await asyncio.to_thread(_send)

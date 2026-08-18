@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Env files
+
+
+# Node
+node_modules/
+dist/
+
+# RAG / Local storage
+knowledge_base/
+rag_cache/
+rag_store/
+model_cache/
+
+# OS
+.DS_Store
+Thumbs.db

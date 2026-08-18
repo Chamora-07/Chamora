@@ -5,3 +5,5 @@ __pycache__
 **/.venv
 .git
 .env
+.venv
+**/model_cache
