@@ -150,12 +150,12 @@ class GroqAnalyzer:
 - Container restarted: {m.has_restart}
 
 ## Required JSON keys (all mandatory)
-1. "root_cause"          — one of: {', '.join(sorted(VALID_ROOT_CAUSES))}
-2. "confidence"          — float 0.0–1.0
+1. "root_cause"          — one of: {', '.join(sorted(VALID_ROOT_CAUSES))}. (If metrics are flat, normal, or within safe operating baselines without resource saturation, use "UNKNOWN").
+2. "confidence"          — float 0.0–1.0 (e.g. 0.40–0.50 if metrics are normal, 0.80–0.95 if clear failure exists)
 3. "affected_component"  — one of: {', '.join(sorted(VALID_COMPONENTS))}
-4. "evidence"            — 1–2 sentences citing specific metric values
-5. "reasoning"           — 2–3 sentences explaining SRE diagnosis
-6. "recommended_actions" — JSON array of 2–3 short actionable strings
+4. "evidence"            — 1–2 sentences citing specific metric values (e.g. explaining that CPU, memory, and error rates remain at healthy baseline levels)
+5. "reasoning"           — 2–3 sentences explaining SRE diagnosis (e.g. noting that no dominant hardware or code failure was identified during this monitoring window)
+6. "recommended_actions" — JSON array of 2–3 actionable strings (e.g. ["Continue baseline monitoring", "Run a k6 load test to simulate peak traffic", "Check application logs for transient errors"])
 
 Output ONLY valid raw JSON without markdown fences."""
 

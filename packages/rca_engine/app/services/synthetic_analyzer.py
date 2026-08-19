@@ -202,18 +202,19 @@ class SyntheticAnalyzer:
 
     @staticmethod
     def _unknown(anomalies: List[str]) -> AnalysisOutput:
+        anomaly_text = f"Observed flags: {', '.join(anomalies)}." if anomalies else "All core metrics are within safe operational thresholds."
         return AnalysisOutput(
             root_cause="UNKNOWN",
             confidence=0.50,
             affected_component="APPLICATION",
-            evidence=f"Detected anomalies: {', '.join(anomalies) or 'none'}.",
+            evidence=f"{anomaly_text} No critical CPU, memory, I/O saturation, or high error rate detected.",
             reasoning=(
-                "No dominant failure pattern identified from current metric correlations. "
-                "Manual investigation is recommended."
+                "System telemetry does not show a definitive hardware bottleneck or active code regression. "
+                "The current behavior indicates normal baseline operations or minor transient fluctuations."
             ),
             recommended_actions=[
-                "Review full metric history for the affected window",
-                "Correlate with deployment or config change events",
-                "Escalate to on-call SRE for manual investigation",
+                "Continue continuous monitoring and alert on sudden resource spikes",
+                "Execute a k6 load test to simulate peak traffic and evaluate degradation behavior",
+                "Review application access and error logs if users report intermittent slowness",
             ],
         )
