@@ -41,7 +41,7 @@ def get_application(application_id: int) -> Optional[dict]:
     supabase = get_supabase_client()
     result = (
         supabase.table("applications")
-        .select("id,name,victoria_metrics_url")
+        .select("id,name,user_id,victoria_metrics_url")
         .eq("id", application_id)
         .limit(1)
         .execute()
@@ -100,3 +100,47 @@ def get_cycle_context(cycle_id: int) -> Dict:
         "script": script,
         "application": application,
     }
+
+
+def get_cycles_display_meta(cycle_ids: List[int]) -> Dict[int, dict]:
+    """
+    Batched lookup of the per-cycle fields the results page shows but the
+    metrics fetcher does not return: the parent script's name (used as the
+    cycle's column label) and the cycle's own status badge.
+
+    Two queries total regardless of how many cycles are asked for.
+    Returns {cycle_id: {test_script_id, script_name, status}}; cycles that
+    cannot be resolved are simply absent from the mapping.
+    """
+    if not cycle_ids:
+        return {}
+
+    supabase = get_supabase_client()
+
+    runs = (
+        supabase.table("test_runs")
+        .select("id,test_script_id,status")
+        .in_("id", list(set(cycle_ids)))
+        .execute()
+    ).data or []
+
+    script_ids = sorted({r["test_script_id"] for r in runs if r.get("test_script_id")})
+    scripts_by_id: Dict[int, dict] = {}
+    if script_ids:
+        scripts = (
+            supabase.table("test_scripts")
+            .select("id,application_id,script_name")
+            .in_("id", script_ids)
+            .execute()
+        ).data or []
+        scripts_by_id = {s["id"]: s for s in scripts}
+
+    meta: Dict[int, dict] = {}
+    for run in runs:
+        script = scripts_by_id.get(run.get("test_script_id")) or {}
+        meta[run["id"]] = {
+            "test_script_id": run.get("test_script_id"),
+            "script_name": script.get("script_name"),
+            "status": run.get("status"),
+        }
+    return meta

@@ -29,6 +29,9 @@ class CompareRequest(BaseModel):
     thresholds: Optional[Dict[str, ThresholdSpec]] = None
     include_summary: bool = True
     summary_top_n: int = Field(default=12, ge=1, le=50)
+    # Persist the finished report to `comparison_results`. Turn off for
+    # throwaway/debug runs you don't want in the history.
+    persist: bool = True
 
 
 @router.post("/compare")
@@ -39,6 +42,9 @@ async def compare_cycles(req: CompareRequest):
     Returns per-metric values, baseline-relative diffs, cross-cycle stats
     (when N≥3), and a global significance ranking. In `group_by_endpoint`
     mode each endpoint-scoped metric is broken out per endpoint.
+
+    The report is saved to `comparison_results` and its row id returned
+    as `comparison_id` (unless `persist` is false).
     """
     try:
         thresholds_dict = (
@@ -57,6 +63,7 @@ async def compare_cycles(req: CompareRequest):
             thresholds=thresholds_dict,
             include_summary=req.include_summary,
             summary_top_n=req.summary_top_n,
+            persist=req.persist,
         )
     except FetchError as e:
         raise HTTPException(status_code=e.status_code, detail=str(e))
