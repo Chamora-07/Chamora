@@ -7,12 +7,17 @@ without any external dependencies.
 """
 
 import asyncio
+import logging
 from typing import Dict, List, Optional
 
+from app.services import report_store
 from app.services.comparison_math import compare
 from app.services.cycle_metrics_fetcher import FetchError, fetch_cycle_metrics
+from app.services.db_lookups import get_application
 from app.services.llm_summary import DEFAULT_TOP_N, generate_summary
 from app.services.metric_catalog import SINGLE_CYCLE_DEFAULT_METRICS, catalog
+
+logger = logging.getLogger(__name__)
 
 
 async def run_comparison(
@@ -26,6 +31,7 @@ async def run_comparison(
     thresholds: Optional[Dict[str, dict]] = None,
     include_summary: bool = True,
     summary_top_n: int = DEFAULT_TOP_N,
+    persist: bool = True,
 ) -> dict:
     """
     Fetch metrics for every cycle in parallel, then return the comparison.
@@ -34,6 +40,9 @@ async def run_comparison(
     In single-cycle mode (`len(cycle_ids) == 1`), if `metric_keys` is omitted
     we fall back to SINGLE_CYCLE_DEFAULT_METRICS, and `thresholds` (if any)
     is applied per metric.
+
+    Unless `persist=False`, the finished report is written to
+    `comparison_results` and its row id returned as `comparison_id`.
     """
     if baseline_cycle_id is not None and baseline_cycle_id not in cycle_ids:
         raise FetchError(
@@ -100,4 +109,54 @@ async def run_comparison(
         # generate_summary never raises — fallback covers Groq failures.
         response["summary"] = await generate_summary(response, top_n=summary_top_n)
 
+    if persist:
+        await _persist(response, catalog_by_key, application_id)
+
     return response
+
+
+async def _persist(
+    response: dict,
+    catalog_by_key: Dict[str, dict],
+    application_id: int,
+) -> None:
+    """
+    Save the finished report to `comparison_results`, annotating the response
+    with `comparison_id` / `saved`.
+
+    Best-effort by design: a storage failure must not discard a comparison the
+    user already waited on, so every error is logged and reported on the
+    response rather than raised. The Supabase client is synchronous, so the
+    whole save runs in a worker thread to keep the event loop free.
+    """
+    try:
+        comparison_id = await asyncio.to_thread(
+            _persist_blocking, response, catalog_by_key, application_id
+        )
+        response["comparison_id"] = comparison_id
+        response["saved"] = True
+    except Exception as e:
+        logger.exception("Failed to persist comparison result")
+        response["comparison_id"] = None
+        response["saved"] = False
+        response["save_error"] = f"{type(e).__name__}: {e}"
+
+
+def _persist_blocking(
+    response: dict,
+    catalog_by_key: Dict[str, dict],
+    application_id: int,
+) -> int:
+    """Synchronous half of the save — runs off the event loop."""
+    application = get_application(application_id) or {}
+    display = report_store.build_display(
+        report=response,
+        catalog_by_key=catalog_by_key,
+        app_name=application.get("name"),
+    )
+    record = report_store.build_record(
+        report=response,
+        display=display,
+        user_id=application.get("user_id"),
+    )
+    return report_store.save_comparison_result(record)

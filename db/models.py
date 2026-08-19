@@ -173,3 +173,69 @@ class MLModelMetric(Base):
     is_promoted: Mapped[bool] = mapped_column(Boolean, default=False)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+class ComparisonResult(Base):
+    """
+    A persisted Test Cycle Comparison report.
+
+    Written by the `test_cycle_comparison` service (via Supabase REST) after
+    every successful /compare call; read by the recommendation module to
+    analyse comparison history. Declared here so the schema stays visible
+    alongside the rest of the model layer — the DDL itself lives in
+    packages/test_cycle_comparison/sql/001_comparison_results.sql and is
+    applied to Supabase manually (no Alembic in this project).
+    """
+    __tablename__ = "comparison_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True
+    )
+    # Denormalised from applications.user_id so history can be scoped
+    # per user without a join.
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+    # --- How the comparison was run ---------------------------------------
+    mode: Mapped[str] = mapped_column(String(20))  # 'baseline' | 'threshold'
+    cycle_ids: Mapped[List[int]] = mapped_column(JSONB, default=list)
+    baseline_cycle_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    endpoint_ids: Mapped[List[int]] = mapped_column(JSONB, default=list)
+    metric_keys: Mapped[List[str]] = mapped_column(JSONB, default=list)
+    group_by_endpoint: Mapped[bool] = mapped_column(Boolean, default=False)
+    regression_threshold_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    thresholds_applied: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # --- Headline counters (the chips on ComparisonResultsPage) -----------
+    regression_count: Mapped[int] = mapped_column(Integer, default=0)
+    improvement_count: Mapped[int] = mapped_column(Integer, default=0)
+    unchanged_count: Mapped[int] = mapped_column(Integer, default=0)
+    violation_count: Mapped[int] = mapped_column(Integer, default=0)
+    ok_count: Mapped[int] = mapped_column(Integer, default=0)
+    no_threshold_count: Mapped[int] = mapped_column(Integer, default=0)
+    metric_count: Mapped[int] = mapped_column(Integer, default=0)
+    missing_metric_keys: Mapped[List[str]] = mapped_column(JSONB, default=list)
+
+    # --- The "AI Analysis" card -------------------------------------------
+    summary_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    summary_source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    summary_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    summary_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # --- Most significant metric of the run -------------------------------
+    top_metric_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    top_metric_significance: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # --- Full payloads -----------------------------------------------------
+    # report  = the exact POST /compare response body
+    # display = cycle labels/status, metric metadata and the flattened
+    #           metric-breakdown rows as ComparisonResultsPage renders them
+    report: Mapped[Dict[str, Any]] = mapped_column(JSONB)
+    display: Mapped[Dict[str, Any]] = mapped_column(JSONB)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    application: Mapped["Application"] = relationship()
