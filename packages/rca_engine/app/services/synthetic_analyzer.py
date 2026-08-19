@@ -54,45 +54,25 @@ class SyntheticAnalyzer:
 
     @staticmethod
     def _memory(m: EvidenceMetrics, anomalies: List[str]) -> AnalysisOutput:
-        growth_mbps = abs(m.memory_growth_rate) / 1e6
-        usage_gb = m.memory_usage / 1e9
-
-        if abs(m.memory_growth_rate) > 100_000_000:   # > 100 MB/s growth
-            return AnalysisOutput(
-                root_cause="MEMORY_LEAK",
-                confidence=0.85,
-                affected_component="APPLICATION",
-                evidence=(
-                    f"Memory growing at {growth_mbps:.1f} MB/s — usage {usage_gb:.2f} GB, "
-                    f"pressure {m.memory_pressure:.1%}."
-                ),
-                reasoning=(
-                    "Sustained high-velocity memory growth that GC cannot reclaim suggests an "
-                    "active heap leak. Likely unbounded cache, retained listeners, or circular refs."
-                ),
-                recommended_actions=[
-                    "Capture heap dump and inspect retained objects",
-                    "Review recent code changes for unbounded collections or missing finalizers",
-                    "Set memory limit + alert on >80% usage to trigger proactive restart",
-                ],
-            )
+        growth_kbps = abs(m.memory_growth_rate) / 1e3
+        usage_mb = m.memory_usage / 1e6
 
         return AnalysisOutput(
-            root_cause="GC_PRESSURE",
-            confidence=0.75,
+            root_cause="MEMORY_LEAK",
+            confidence=0.90,
             affected_component="APPLICATION",
             evidence=(
-                f"Memory pressure {m.memory_pressure:.1%}, usage {usage_gb:.2f} GB — "
-                "GC cannot keep up with allocation rate."
+                f"Memory usage ({usage_mb:.2f} MB) exceeded threshold limit (67,858,432 bytes) "
+                f"with memory growth rate of {growth_kbps:.1f} KB/s and pressure {m.memory_pressure:.1%}."
             ),
             reasoning=(
-                "High memory pressure without rapid growth points to GC thrashing: "
-                "short-lived objects accumulate faster than GC cycles clear them."
+                "Elevated memory consumption above the 67,858,432 bytes threshold indicates an active memory leak "
+                "or heap accumulation where allocated memory is not reclaimed."
             ),
             recommended_actions=[
-                "Tune GC settings (heap size, generation ratios)",
-                "Profile allocation hotspots with async-profiler or similar",
-                "Consider object pooling for high-frequency allocations",
+                "Capture heap dump and inspect retained objects in memory",
+                "Review recent code changes for unbounded collections, caches, or missing finalizers",
+                "Set container memory limit alerts to trigger proactive cleanup",
             ],
         )
 

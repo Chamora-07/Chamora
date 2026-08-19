@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     THRESHOLD_LATENCY_P95: float = 0.05        # 50 ms
     THRESHOLD_ERROR_RATE: float = 0.01         # 1 %
     THRESHOLD_CPU_USAGE: float = 0.85          # 85 %
-    THRESHOLD_MEMORY_BYTES: float = 900_000_000  # 900 MB
+    THRESHOLD_MEMORY_BYTES: float = 67_858_432  # 67,858,432 bytes (~64.7 MB)
     THRESHOLD_MEMORY_PRESSURE: float = 0.80
     THRESHOLD_MEMORY_GROWTH: float = 50_000_000   # 50 MB/s
     THRESHOLD_DISK_IO: float = 0.80

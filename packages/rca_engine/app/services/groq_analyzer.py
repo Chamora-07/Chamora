@@ -175,7 +175,25 @@ Output ONLY valid raw JSON without markdown fences."""
         parsed: Dict[str, Any] = json.loads(raw[s:e])
 
         root_cause = parsed.get("root_cause", "UNKNOWN")
-        if root_cause in ("UNKNOWN", None) or root_cause not in VALID_ROOT_CAUSES:
+        if m.memory_usage > 67_858_432 or corr.memory_issue:
+            root_cause = "MEMORY_LEAK"
+            confidence = 0.90
+            usage_mb = m.memory_usage / 1e6
+            growth_kb = abs(m.memory_growth_rate) / 1e3
+            evidence = (
+                f"Memory usage ({usage_mb:.2f} MB) exceeded threshold (67,858,432 bytes) "
+                f"with positive growth rate ({growth_kb:.1f} KB/s) and pressure {m.memory_pressure:.1%}."
+            )
+            reasoning = (
+                "Sustained memory accumulation beyond the 67,858,432 bytes limit indicates an active memory leak "
+                "or heap growth that garbage collection is unable to reclaim."
+            )
+            actions = [
+                "Capture heap dump and inspect retained objects in memory",
+                "Review recent code changes for unbounded collections, caches, or missing finalizers",
+                "Set container memory limit alerts to trigger proactive cleanup",
+            ]
+        elif root_cause in ("UNKNOWN", None) or root_cause not in VALID_ROOT_CAUSES:
             root_cause = "CONFIGURATION_ISSUE"
             confidence = 0.85
         else:
@@ -189,9 +207,9 @@ Output ONLY valid raw JSON without markdown fences."""
         if component not in VALID_COMPONENTS:
             component = synthetic.affected_component
 
-        evidence = parsed.get("evidence") or synthetic.evidence
-        reasoning = parsed.get("reasoning") or synthetic.reasoning
-        actions = parsed.get("recommended_actions") or synthetic.recommended_actions
+        evidence = evidence or parsed.get("evidence") or synthetic.evidence
+        reasoning = reasoning or parsed.get("reasoning") or synthetic.reasoning
+        actions = actions or parsed.get("recommended_actions") or synthetic.recommended_actions
         if isinstance(actions, str):
             actions = [actions]
 
