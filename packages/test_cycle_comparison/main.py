@@ -8,6 +8,7 @@ from app.routes.catalog_routes import router as catalog_router
 from app.routes.metrics_routes import router as metrics_router
 from app.routes.compare_routes import router as compare_router
 from app.routes.single_cycle_routes import router as single_cycle_router
+from app.routes.history_routes import router as history_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +29,7 @@ app.include_router(catalog_router)
 app.include_router(metrics_router)
 app.include_router(compare_router)
 app.include_router(single_cycle_router)
+app.include_router(history_router)
 
 
 @app.get("/health")
