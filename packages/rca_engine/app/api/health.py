@@ -8,7 +8,9 @@ router = APIRouter()
 async def health():
     provider = "none"
     if settings.USE_LLM:
-        if settings.LLM_PROVIDER == "ollama":
+        if settings.LLM_PROVIDER == "groq" and settings.GROQ_API_KEY:
+            provider = "groq"
+        elif settings.LLM_PROVIDER == "ollama":
             provider = "ollama"
         elif settings.LLM_PROVIDER == "gemini" and settings.GEMINI_API_KEY:
             provider = "gemini"

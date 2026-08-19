@@ -10,16 +10,20 @@ from typing import List
 class Settings(BaseSettings):
     # Gemini LLM
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
+    GEMINI_MODEL: str = "gemini-2.0-flash"
     GEMINI_TIMEOUT: int = 30
     GEMINI_RPM_DELAY: float = 6.0          # seconds between calls on free tier (10 RPM)
+
+    # Groq LLM
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # Ollama / Qwen LLM
     OLLAMA_API_URL: str = "http://host.docker.internal:11434"
     OLLAMA_MODEL: str = "qwen-sre:latest"
 
     # Analysis behaviour
-    LLM_PROVIDER: str = "ollama"           # "gemini" or "ollama"
+    LLM_PROVIDER: str = "groq"             # "groq", "gemini", or "ollama"
     USE_LLM: bool = True                   # False = synthetic rule-based only
     LLM_CONFIDENCE_FLOOR: float = 0.0      # reject LLM results below this
     GUARDRAILS_ENABLED: bool = False        # SRE guardrails that validate LLM output

@@ -18,6 +18,7 @@ from .metrics_analyzer import MetricsAnalyzer
 from .synthetic_analyzer import SyntheticAnalyzer
 from .gemini_analyzer import GeminiAnalyzer
 from .ollama_analyzer import OllamaAnalyzer
+from .groq_analyzer import GroqAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class RCAEngine:
         self.metrics_analyzer = MetricsAnalyzer()
         self.gemini = GeminiAnalyzer()
         self.ollama = OllamaAnalyzer()
+        self.groq = GroqAnalyzer()
 
     async def analyze(self, record: MLRecord) -> RCAResult:
         """Full pipeline for a single record."""
@@ -40,7 +42,15 @@ class RCAEngine:
         # Step 2 — LLM or synthetic analysis
         analysis = None
         if settings.USE_LLM:
-            if settings.LLM_PROVIDER == "ollama" and self.ollama.available:
+            if settings.LLM_PROVIDER == "groq" and self.groq.available:
+                analysis = await self.groq.analyze(
+                    m=m,
+                    anomalies=report.anomalies,
+                    corr=report.correlations,
+                    ml_severity=record.severity,
+                    ml_root_cause=normalized_root_cause,
+                )
+            elif settings.LLM_PROVIDER == "ollama" and self.ollama.available:
                 analysis = await self.ollama.analyze(
                     m=m,
                     anomalies=report.anomalies,
