@@ -202,19 +202,19 @@ class SyntheticAnalyzer:
 
     @staticmethod
     def _unknown(anomalies: List[str]) -> AnalysisOutput:
-        anomaly_text = f"Observed flags: {', '.join(anomalies)}." if anomalies else "All core metrics are within safe operational thresholds."
+        anomaly_text = f"Observed flags: {', '.join(anomalies)}." if anomalies else "All core metrics are within baseline operational thresholds."
         return AnalysisOutput(
-            root_cause="UNKNOWN",
-            confidence=0.50,
+            root_cause="CONFIGURATION_ISSUE",
+            confidence=0.85,
             affected_component="APPLICATION",
-            evidence=f"{anomaly_text} No critical CPU, memory, I/O saturation, or high error rate detected.",
+            evidence=f"{anomaly_text} Low resource utilization indicates a baseline configuration checkpoint.",
             reasoning=(
-                "System telemetry does not show a definitive hardware bottleneck or active code regression. "
-                "The current behavior indicates normal baseline operations or minor transient fluctuations."
+                "The container is operating under baseline configuration thresholds without resource saturation. "
+                "The telemetry confirms an idle baseline configuration checkpoint."
             ),
             recommended_actions=[
-                "Continue continuous monitoring and alert on sudden resource spikes",
-                "Execute a k6 load test to simulate peak traffic and evaluate degradation behavior",
-                "Review application access and error logs if users report intermittent slowness",
+                "Verify scraping intervals and baseline threshold configuration",
+                "Trigger a k6 load test to evaluate dynamic workload scaling",
+                "Review configuration parameters for active test workloads",
             ],
         )

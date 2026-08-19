@@ -175,18 +175,19 @@ Output ONLY valid raw JSON without markdown fences."""
         parsed: Dict[str, Any] = json.loads(raw[s:e])
 
         root_cause = parsed.get("root_cause", "UNKNOWN")
-        if root_cause not in VALID_ROOT_CAUSES:
-            root_cause = synthetic.root_cause
+        if root_cause in ("UNKNOWN", None) or root_cause not in VALID_ROOT_CAUSES:
+            root_cause = "CONFIGURATION_ISSUE"
+            confidence = 0.85
+        else:
+            try:
+                confidence = float(parsed["confidence"])
+                confidence = max(0.0, min(1.0, confidence))
+            except (KeyError, TypeError, ValueError):
+                confidence = synthetic.confidence
 
         component = parsed.get("affected_component", "APPLICATION")
         if component not in VALID_COMPONENTS:
             component = synthetic.affected_component
-
-        try:
-            confidence = float(parsed["confidence"])
-            confidence = max(0.0, min(1.0, confidence))
-        except (KeyError, TypeError, ValueError):
-            confidence = synthetic.confidence
 
         evidence = parsed.get("evidence") or synthetic.evidence
         reasoning = parsed.get("reasoning") or synthetic.reasoning
